@@ -21,11 +21,24 @@ npm ci
 cp .env.example .env
 docker compose up -d postgres
 npm run db:migrate
+npm run db:seed      # optional demo data
 npm run start:dev
 curl localhost:3000/health/ready
 ```
 
 Swagger UI is served at http://localhost:3000/docs (JSON at `/docs/openapi.json`). The committed contract is [openapi.yaml](openapi.yaml).
+
+## Endpoints
+
+| Method and path         | Purpose                                                   |
+| ----------------------- | --------------------------------------------------------- |
+| `GET /v1/service-types` | Service types with their duration, skill and bay type     |
+| `GET /health/live`      | Liveness                                                  |
+| `GET /health/ready`     | Readiness: database reachable and every migration applied |
+
+## Demo
+
+`npm run db:seed` loads fictional demo data from [seeds/demo.sql](seeds/demo.sql). The ids are fixed, so the requests in [requests.http](requests.http) work as written. The seed is re-runnable and refuses to run when `NODE_ENV=production`; it is not a migration. With Docker, `docker compose --profile demo up` seeds after migrating.
 
 ## Scripts
 
@@ -35,6 +48,7 @@ Swagger UI is served at http://localhost:3000/docs (JSON at `/docs/openapi.json`
 | `npm run build`            | Compile to `dist/`                                             |
 | `npm run start:prod`       | Run the compiled API                                           |
 | `npm run db:migrate`       | Apply pending SQL migrations from `migrations/`                |
+| `npm run db:seed`          | Load the demo data from `seeds/demo.sql` (never in production) |
 | `npm run db:codegen`       | Regenerate `src/persistence/database.types.ts` from the schema |
 | `npm run openapi:generate` | Regenerate `openapi.yaml` (CI fails if it is out of date)      |
 | `npm run lint`             | ESLint (type-aware)                                            |
@@ -106,12 +120,15 @@ src/
   app.module.ts      root module: config, logging, database, health
   app.setup.ts       HTTP setup shared with the e2e tests
   common/            config, errors, decorators, DTOs, base controller, validation
-  persistence/       Kysely, transactions, base repository, migrator
+  persistence/       Kysely, transactions, repositories, migrator, seeder
+  reference-data/    service types, technicians and bays
   health/            liveness and readiness
   telemetry/         OpenTelemetry SDK
   openapi/           document builder and generator
   domain/            pure business rules (no framework imports; enforced by ESLint)
 migrations/          timestamp-prefixed SQL migrations
+seeds/               demo data (not migrations)
+requests.http        example requests against the demo data
 test/
   unit/              no I/O
   integration/       real PostgreSQL 18 via Testcontainers
