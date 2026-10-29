@@ -16,3 +16,9 @@ GET {{baseUrl}}/v1/dealerships/{{dealershipId}}/technicians
 
 ### Service bays of a dealership
 GET {{baseUrl}}/v1/dealerships/{{dealershipId}}/bays
+
+# The demo seed has one past, completed appointment.
+@appointmentId = 01a16194-0000-7000-8000-0000000000d1
+
+### One appointment
+GET {{baseUrl}}/v1/appointments/{{appointmentId}}

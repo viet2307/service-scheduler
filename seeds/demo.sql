@@ -57,3 +57,32 @@ INSERT INTO service_bay (id, dealership_id, name, bay_type) VALUES
   ('01a16194-0000-7000-8000-0000000000b5', '01a16194-0000-7000-8000-000000000002', 'Bay 1',             'LIFT'),
   ('01a16194-0000-7000-8000-0000000000b6', '01a16194-0000-7000-8000-000000000002', 'Bay 2 (EV)',        'EV_HV')
 ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO customer (id, full_name) VALUES
+  ('01a16194-0000-7000-8000-0000000000c1', 'Ngoc Anh Le'),
+  ('01a16194-0000-7000-8000-0000000000c2', 'Sam Taylor')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO vehicle (id, vin, customer_id, make, model, model_year) VALUES
+  ('01a16194-0000-7000-8000-0000000000e1', 'WVWZZZ1KZAW000001', '01a16194-0000-7000-8000-0000000000c1', 'Volkswagen', 'ID.3',    2023),
+  ('01a16194-0000-7000-8000-0000000000e2', 'WVWZZZ1KZAW000002', '01a16194-0000-7000-8000-0000000000c1', 'Volkswagen', 'Golf',    2019),
+  ('01a16194-0000-7000-8000-0000000000e3', 'WVWZZZ1KZAW000003', '01a16194-0000-7000-8000-0000000000c2', 'Volkswagen', 'Passat',  2021)
+ON CONFLICT (id) DO NOTHING;
+
+-- One finished job, last week's Monday 09:00 in Saigon, so GET /v1/appointments/{id} has something to show.
+-- It is in the past, so it never blocks a new booking.
+INSERT INTO appointment (
+  id, dealership_id, customer_id, vehicle_id, service_type_id, technician_id, bay_id,
+  start_at, end_at, status, idempotency_key, request_fingerprint
+)
+SELECT
+  '01a16194-0000-7000-8000-0000000000d1', '01a16194-0000-7000-8000-000000000001',
+  '01a16194-0000-7000-8000-0000000000c1', '01a16194-0000-7000-8000-0000000000e2',
+  '01a16194-0000-7000-8000-0000000000a2', '01a16194-0000-7000-8000-0000000000f2',
+  '01a16194-0000-7000-8000-0000000000b1',
+  start_at, start_at + interval '60 minutes', 'COMPLETED', 'demo-seed-d1', 'demo-seed'
+FROM (
+  SELECT (date_trunc('week', now() AT TIME ZONE 'Asia/Ho_Chi_Minh') - interval '7 days' + interval '9 hours')
+         AT TIME ZONE 'Asia/Ho_Chi_Minh' AS start_at
+) AS last_week
+ON CONFLICT (id) DO NOTHING;
