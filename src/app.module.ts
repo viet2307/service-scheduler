@@ -8,6 +8,7 @@ import { createLoggerParams } from './common/logger';
 import { createValidationPipe } from './common/validation';
 import { HealthModule } from './health/health.module';
 import { DatabaseModule } from './persistence/database.module';
+import { ReferenceDataModule } from './reference-data/reference-data.module';
 import { TelemetryModule } from './telemetry/telemetry.module';
 
 @Module({
@@ -25,6 +26,7 @@ import { TelemetryModule } from './telemetry/telemetry.module';
     DatabaseModule,
     TelemetryModule,
     HealthModule,
+    ReferenceDataModule,
   ],
   providers: [
     { provide: APP_PIPE, useFactory: createValidationPipe },

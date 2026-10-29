@@ -30,6 +30,39 @@ paths:
                 $ref: "#/components/schemas/ProblemDetailsDto"
       tags:
         - health
+  /v1/service-types:
+    get:
+      operationId: ServiceTypes_list
+      parameters: []
+      responses:
+        "200":
+          description: Every service type, ordered by name
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ServiceTypeDto"
+        "400":
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "500":
+          description: Internal Server Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "503":
+          description: Service Unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+      tags:
+        - service-types
 info:
   title: Service Scheduler API
   description: Books a qualified technician and a compatible service bay for a
@@ -87,3 +120,34 @@ components:
         - title
         - status
         - code
+    ServiceTypeDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          example: EV_BATTERY_CHECK
+        name:
+          type: string
+          example: EV battery health check
+        durationMinutes:
+          type: integer
+          example: 90
+          description: Includes bay turnaround time
+        requiredSkill:
+          type: string
+          example: EV_HV
+          description: Skill code the technician must hold
+        requiredBayType:
+          type: string
+          example: EV_HV
+          description: Bay type code the bay must have
+      required:
+        - id
+        - code
+        - name
+        - durationMinutes
+        - requiredSkill
+        - requiredBayType
