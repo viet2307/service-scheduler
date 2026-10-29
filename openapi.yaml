@@ -153,6 +153,49 @@ paths:
                 $ref: "#/components/schemas/ProblemDetailsDto"
       tags:
         - dealerships
+  /v1/appointments/{id}:
+    get:
+      operationId: Appointments_get
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            format: uuid
+            type: string
+      responses:
+        "200":
+          description: The appointment in its current state, cancelled or not
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppointmentDto"
+        "400":
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "404":
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "500":
+          description: Internal Server Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "503":
+          description: Service Unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+      tags:
+        - appointments
 info:
   title: Service Scheduler API
   description: Books a qualified technician and a compatible service bay for a
@@ -286,3 +329,110 @@ components:
         - name
         - bayType
         - isActive
+    AppointmentStatus:
+      type: string
+      enum:
+        - CONFIRMED
+        - CANCELLED
+        - COMPLETED
+        - NO_SHOW
+    AppointmentVehicleDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        vin:
+          type: string
+          example: WVWZZZ1KZAW000001
+      required:
+        - id
+        - vin
+    AppointmentServiceTypeDto:
+      type: object
+      properties:
+        code:
+          type: string
+          example: EV_BATTERY_CHECK
+        durationMinutes:
+          type: integer
+          example: 90
+      required:
+        - code
+        - durationMinutes
+    AppointmentTechnicianDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+          example: Linh Tran
+      required:
+        - id
+        - displayName
+    AppointmentBayDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Bay 3 (EV)
+      required:
+        - id
+        - name
+    AppointmentDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          example: CONFIRMED
+          allOf:
+            - $ref: "#/components/schemas/AppointmentStatus"
+        dealershipId:
+          type: string
+          format: uuid
+        customerId:
+          type: string
+          format: uuid
+        vehicle:
+          $ref: "#/components/schemas/AppointmentVehicleDto"
+        serviceType:
+          $ref: "#/components/schemas/AppointmentServiceTypeDto"
+        technician:
+          $ref: "#/components/schemas/AppointmentTechnicianDto"
+        bay:
+          $ref: "#/components/schemas/AppointmentBayDto"
+        startAt:
+          format: date-time
+          type: string
+          description: UTC
+        endAt:
+          format: date-time
+          type: string
+          description: UTC; the interval is [startAt, endAt)
+        createdAt:
+          format: date-time
+          type: string
+        cancelledAt:
+          format: date-time
+          type: string
+          nullable: true
+          description: Set only when status is CANCELLED
+      required:
+        - id
+        - status
+        - dealershipId
+        - customerId
+        - vehicle
+        - serviceType
+        - technician
+        - bay
+        - startAt
+        - endAt
+        - createdAt

@@ -1,3 +1,4 @@
+export * from './appointment.repository';
 export * from './bay.repository';
 export * from './dealership.repository';
 export * from './repositories.module';
