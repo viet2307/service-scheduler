@@ -1,7 +1,34 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_FILTER, APP_PIPE } from '@nestjs/core';
+import { LoggerModule } from 'nestjs-pino';
+import { validateEnv } from './common/config/env';
+import { ProblemDetailsFilter } from './common/errors';
+import { createLoggerParams } from './common/logger';
+import { createValidationPipe } from './common/validation';
 import { HealthModule } from './health/health.module';
+import { DatabaseModule } from './persistence/database.module';
+import { TelemetryModule } from './telemetry/telemetry.module';
 
 @Module({
-  imports: [HealthModule],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      cache: true,
+      ignoreEnvFile: true,
+      validate: validateEnv,
+    }),
+    LoggerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: createLoggerParams,
+    }),
+    DatabaseModule,
+    TelemetryModule,
+    HealthModule,
+  ],
+  providers: [
+    { provide: APP_PIPE, useFactory: createValidationPipe },
+    { provide: APP_FILTER, useClass: ProblemDetailsFilter },
+  ],
 })
 export class AppModule {}
