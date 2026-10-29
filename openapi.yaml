@@ -1,0 +1,89 @@
+openapi: 3.0.0
+paths:
+  /health/live:
+    get:
+      operationId: Health_live
+      parameters: []
+      responses:
+        "200":
+          description: The process is running
+        "503":
+          description: Service Unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+      tags:
+        - health
+  /health/ready:
+    get:
+      operationId: Health_ready
+      parameters: []
+      responses:
+        "200":
+          description: The database is reachable and every migration is applied
+        "503":
+          description: Service Unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+      tags:
+        - health
+info:
+  title: Service Scheduler API
+  description: Books a qualified technician and a compatible service bay for a
+    vehicle service. Errors use RFC 9457 application/problem+json.
+  version: "1"
+  contact: {}
+tags: []
+servers: []
+components:
+  schemas:
+    FieldErrorDto:
+      type: object
+      properties:
+        field:
+          type: string
+          example: startAt
+        messages:
+          example:
+            - startAt must be a valid ISO 8601 date string
+          type: array
+          items:
+            type: string
+      required:
+        - field
+        - messages
+    ProblemDetailsDto:
+      type: object
+      properties:
+        type:
+          type: string
+          example: https://scheduler.example.com/problems/validation-failed
+        title:
+          type: string
+          example: Request validation failed
+        status:
+          type: number
+          example: 400
+        detail:
+          type: string
+        instance:
+          type: string
+          example: /v1/appointments
+        code:
+          type: string
+          example: VALIDATION_FAILED
+        traceId:
+          type: string
+          example: 4bf92f3577b34da6a3ce929d0e0e4736
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/FieldErrorDto"
+      required:
+        - type
+        - title
+        - status
+        - code

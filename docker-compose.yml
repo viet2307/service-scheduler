@@ -10,11 +10,25 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      DATABASE_URL: postgres://scheduler:scheduler@postgres:5432/scheduler
       OTEL_SERVICE_NAME: service-scheduler
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       otel-collector:
         condition: service_started
+
+  migrate:
+    build: .
+    image: service-scheduler:local
+    command: ['node', 'dist/persistence/migrate.js']
+    environment:
+      DATABASE_URL: postgres://scheduler:scheduler@postgres:5432/scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
 
   postgres:
     image: postgres:18.4-alpine3.24

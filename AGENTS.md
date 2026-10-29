@@ -12,9 +12,10 @@ Rules for anyone changing this repository, including AI coding agents.
 
 ## Conventions
 
-- Migrations are hand-written, timestamp-prefixed SQL files. Never edit a migration that has been merged; add a new one.
+- Use the building blocks listed in the README: `@Api` + `BaseController` for controllers, `@ServiceInjectable` for services, `BaseRepository` for repositories, `AppError` + `ErrorCode` for errors, `@Transactional` for transactions.
+- Migrations are hand-written, timestamp-prefixed SQL files. Never edit a migration that has been merged; add a new one, then run `npm run db:codegen`.
 - All SQL lives in repositories. Services orchestrate repositories and the domain core; they do not build queries.
-- Controllers map results to response DTOs explicitly; services return plain data.
+- Controllers map results to response DTOs with `this.toDto` / `this.toPage`; services return plain data.
 - Independent queries run with `Promise.all`; sequential `await` only when one result feeds the next.
 - Errors are RFC 9457 `application/problem+json` with a stable `code`. Never leak raw database messages.
 - Never log personal data (customer name, email, phone, VIN). Log IDs only.
@@ -23,5 +24,6 @@ Rules for anyone changing this repository, including AI coding agents.
 ## Before you push
 
 ```bash
-npm run lint && npm run format:check && npm run typecheck && npm test && npm run test:e2e
+npm run lint && npm run format:check && npm run typecheck && npm test && npm run test:integration && npm run test:e2e
+npm run openapi:generate   # commit openapi.yaml if it changed
 ```

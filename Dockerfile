@@ -27,6 +27,7 @@ RUN rm -rf /usr/local/lib/node_modules /opt/yarn-* \
 COPY package.json ./
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+COPY migrations ./migrations
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
