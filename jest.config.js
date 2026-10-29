@@ -19,6 +19,7 @@ module.exports = {
     'src/**/*.ts',
     '!src/main.ts',
     '!src/**/migrate.ts',
+    '!src/**/seed.ts',
     '!src/openapi/generate.ts',
   ],
   coverageDirectory: 'coverage',

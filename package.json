@@ -24,6 +24,7 @@
     "test:integration": "jest --selectProjects integration",
     "test:e2e": "jest --selectProjects e2e",
     "db:migrate": "nest build && node --env-file-if-exists=.env dist/persistence/migrate.js",
+    "db:seed": "nest build && node --env-file-if-exists=.env dist/persistence/seed.js",
     "db:codegen": "kysely-codegen --dialect postgres --camel-case --exclude-pattern \"kysely_*\" --out-file src/persistence/database.types.ts",
     "openapi:generate": "nest build && node dist/openapi/generate.js openapi.yaml"
   },
