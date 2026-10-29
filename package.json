@@ -65,6 +65,8 @@
     "@types/node": "^24.19.2",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.2.1",
+    "ajv": "^8.18.0",
+    "ajv-formats": "^3.0.1",
     "eslint": "^10.13.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.13.0",
