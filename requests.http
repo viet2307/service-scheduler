@@ -1,0 +1,10 @@
+# Requests for a local API with demo data (`npm run db:seed`).
+# Open in VS Code (REST Client extension) or a JetBrains IDE (HTTP Client).
+
+@baseUrl = http://localhost:3000
+
+### Readiness: 200 once the database is reachable and migrated
+GET {{baseUrl}}/health/ready
+
+### Service types
+GET {{baseUrl}}/v1/service-types
