@@ -3,4 +3,120 @@
  * Please do not edit it manually.
  */
 
-export interface DB {}
+import type { ColumnType } from "kysely";
+
+export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
+  ? ColumnType<S, I | undefined, U>
+  : ColumnType<T, T | undefined, T>;
+
+export type Timestamp = ColumnType<Date, Date | string, Date | string>;
+
+export interface Appointment {
+  bayId: string;
+  cancelledAt: Timestamp | null;
+  createdAt: Generated<Timestamp>;
+  customerId: string;
+  dealershipId: string;
+  endAt: Timestamp;
+  id: Generated<string>;
+  idempotencyKey: string;
+  requestFingerprint: string;
+  serviceTypeId: string;
+  startAt: Timestamp;
+  status: Generated<string>;
+  technicianId: string;
+  updatedAt: Generated<Timestamp>;
+  vehicleId: string;
+}
+
+export interface BayType {
+  code: string;
+  description: string;
+}
+
+export interface Customer {
+  createdAt: Generated<Timestamp>;
+  email: string | null;
+  fullName: string;
+  id: Generated<string>;
+  phone: string | null;
+}
+
+export interface Dealership {
+  createdAt: Generated<Timestamp>;
+  id: Generated<string>;
+  name: string;
+  timezone: string;
+}
+
+export interface DealershipOpeningHours {
+  closesAt: string;
+  dealershipId: string;
+  isoWeekday: number;
+  opensAt: string;
+}
+
+export interface ServiceBay {
+  bayType: string;
+  dealershipId: string;
+  id: Generated<string>;
+  isActive: Generated<boolean>;
+  name: string;
+}
+
+export interface ServiceType {
+  code: string;
+  durationMinutes: number;
+  id: Generated<string>;
+  name: string;
+  requiredBayType: string;
+  requiredSkill: string;
+}
+
+export interface Skill {
+  code: string;
+  description: string;
+}
+
+export interface Technician {
+  dealershipId: string;
+  displayName: string;
+  id: Generated<string>;
+  isActive: Generated<boolean>;
+}
+
+export interface TechnicianShift {
+  endAt: Timestamp;
+  id: Generated<string>;
+  startAt: Timestamp;
+  technicianId: string;
+}
+
+export interface TechnicianSkill {
+  skillCode: string;
+  technicianId: string;
+}
+
+export interface Vehicle {
+  customerId: string;
+  id: Generated<string>;
+  make: string;
+  model: string;
+  modelYear: number | null;
+  vin: string;
+}
+
+export interface DB {
+  appointment: Appointment;
+  bayType: BayType;
+  customer: Customer;
+  dealership: Dealership;
+  dealershipOpeningHours: DealershipOpeningHours;
+  serviceBay: ServiceBay;
+  serviceType: ServiceType;
+  skill: Skill;
+  technician: Technician;
+  technicianShift: TechnicianShift;
+  technicianSkill: TechnicianSkill;
+  vehicle: Vehicle;
+}
