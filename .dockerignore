@@ -1,0 +1,13 @@
+**/node_modules
+dist
+coverage
+test
+docker
+.git
+.github
+.env
+.env.*
+*.md
+*.log
+Dockerfile
+docker-compose*.yml
