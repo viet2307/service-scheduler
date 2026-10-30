@@ -24,6 +24,7 @@
     "test:integration": "jest --selectProjects integration",
     "test:e2e": "jest --selectProjects e2e",
     "db:migrate": "nest build && node --env-file-if-exists=.env dist/persistence/migrate.js",
+    "db:seed": "nest build && node --env-file-if-exists=.env dist/persistence/seed.js",
     "db:codegen": "kysely-codegen --dialect postgres --camel-case --exclude-pattern \"kysely_*\" --out-file src/persistence/database.types.ts",
     "openapi:generate": "nest build && node dist/openapi/generate.js openapi.yaml"
   },
@@ -65,6 +66,8 @@
     "@types/node": "^24.19.2",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.2.1",
+    "ajv": "^8.18.0",
+    "ajv-formats": "^3.0.1",
     "eslint": "^10.13.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.13.0",

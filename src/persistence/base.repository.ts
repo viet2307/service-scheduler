@@ -1,3 +1,4 @@
+import { Injectable } from '@nestjs/common';
 import {
   Insertable,
   Kysely,
@@ -21,6 +22,8 @@ type Row<T extends TableWithId> = Selectable<DB[T]>;
 /** Kysely cannot resolve columns of a generic table, so shared queries run against this shape and are cast back. */
 type AnyDB = Record<string, Record<string, unknown>>;
 
+// Emits the constructor's parameter types, which subclasses without their own constructor inherit for injection.
+@Injectable()
 export abstract class BaseRepository<T extends TableWithId> {
   protected abstract readonly table: T;
 

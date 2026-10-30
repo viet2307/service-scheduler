@@ -1,33 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { Test } from '@nestjs/testing';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import type { App } from 'supertest/types';
-import { AppModule } from '@/app.module';
-import { configureApp } from '@/app.setup';
-import { createDatabase, KYSELY } from '@/persistence/database';
+import { createDatabase } from '@/persistence/database';
 import { createMigrator } from '@/persistence/migrator';
+import { createApp } from './support/app';
 import { ProbeController } from './support/probe.controller';
 
 const PROBLEM_JSON = /application\/problem\+json/;
-
-async function createApp(overrides?: { databaseUrl: string }) {
-  const builder = Test.createTestingModule({
-    imports: [AppModule],
-    controllers: [ProbeController],
-  });
-  if (overrides) {
-    builder
-      .overrideProvider(KYSELY)
-      .useValue(createDatabase({ connectionString: overrides.databaseUrl }));
-  }
-  const moduleRef = await builder.compile();
-  const app = configureApp(
-    moduleRef.createNestApplication<NestExpressApplication>(),
-  );
-  await app.init();
-  return app;
-}
 
 describe('HTTP (e2e)', () => {
   let app: NestExpressApplication;
@@ -38,7 +18,7 @@ describe('HTTP (e2e)', () => {
     await createMigrator(db).migrateToLatest();
     await db.destroy();
 
-    app = await createApp();
+    app = await createApp({ controllers: [ProbeController] });
     server = app.getHttpServer();
   });
 
