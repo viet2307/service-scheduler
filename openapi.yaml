@@ -63,6 +63,96 @@ paths:
                 $ref: "#/components/schemas/ProblemDetailsDto"
       tags:
         - service-types
+  /v1/dealerships/{id}/technicians:
+    get:
+      operationId: DealershipResources_listTechnicians
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            format: uuid
+            type: string
+      responses:
+        "200":
+          description: The dealership's technicians, active or not, ordered by name
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TechnicianDto"
+        "400":
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "404":
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "500":
+          description: Internal Server Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "503":
+          description: Service Unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+      tags:
+        - dealerships
+  /v1/dealerships/{id}/bays:
+    get:
+      operationId: DealershipResources_listBays
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            format: uuid
+            type: string
+      responses:
+        "200":
+          description: The dealership's service bays, active or not, ordered by name
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BayDto"
+        "400":
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "404":
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "500":
+          description: Internal Server Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "503":
+          description: Service Unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+      tags:
+        - dealerships
 info:
   title: Service Scheduler API
   description: Books a qualified technician and a compatible service bay for a
@@ -151,3 +241,48 @@ components:
         - durationMinutes
         - requiredSkill
         - requiredBayType
+    TechnicianDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+          example: Linh Tran
+        skills:
+          example:
+            - EV_HV
+            - GENERAL
+          description: Skill codes, sorted
+          type: array
+          items:
+            type: string
+        isActive:
+          type: boolean
+          description: Inactive technicians are never assigned
+      required:
+        - id
+        - displayName
+        - skills
+        - isActive
+    BayDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Bay 3 (EV)
+        bayType:
+          type: string
+          example: EV_HV
+        isActive:
+          type: boolean
+          description: Inactive bays are never assigned
+      required:
+        - id
+        - name
+        - bayType
+        - isActive

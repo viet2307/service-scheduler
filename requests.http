@@ -8,3 +8,11 @@ GET {{baseUrl}}/health/ready
 
 ### Service types
 GET {{baseUrl}}/v1/service-types
+
+@dealershipId = 01a16194-0000-7000-8000-000000000001
+
+### Technicians of a dealership, with their skills
+GET {{baseUrl}}/v1/dealerships/{{dealershipId}}/technicians
+
+### Service bays of a dealership
+GET {{baseUrl}}/v1/dealerships/{{dealershipId}}/bays
