@@ -153,6 +153,64 @@ paths:
                 $ref: "#/components/schemas/ProblemDetailsDto"
       tags:
         - dealerships
+  /v1/dealerships/{id}/availability:
+    get:
+      operationId: Availability_get
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            format: uuid
+            type: string
+        - name: serviceTypeId
+          required: true
+          in: query
+          schema:
+            format: uuid
+            type: string
+        - name: date
+          required: true
+          in: query
+          description: A day in the dealership's time zone
+          schema:
+            format: date
+            example: 2026-11-02
+            type: string
+      responses:
+        "200":
+          description: "Bookable start times on one local day. Advisory: a booking
+            re-checks everything."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvailabilityDto"
+        "400":
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "404":
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "500":
+          description: Internal Server Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "503":
+          description: Service Unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+      tags:
+        - dealerships
   /v1/appointments/{id}:
     get:
       operationId: Appointments_get
@@ -329,6 +387,59 @@ components:
         - name
         - bayType
         - isActive
+    SlotDto:
+      type: object
+      properties:
+        startAt:
+          format: date-time
+          type: string
+          description: UTC
+        endAt:
+          format: date-time
+          type: string
+          description: UTC; the slot is [startAt, endAt)
+        freeTechnicians:
+          type: integer
+          example: 2
+          description: Qualified technicians free for the whole slot
+        freeBays:
+          type: integer
+          example: 1
+          description: Compatible bays free for the whole slot
+      required:
+        - startAt
+        - endAt
+        - freeTechnicians
+        - freeBays
+    AvailabilityDto:
+      type: object
+      properties:
+        dealershipId:
+          type: string
+          format: uuid
+        serviceTypeId:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+          example: 2026-11-02
+        timeZone:
+          type: string
+          example: Asia/Ho_Chi_Minh
+          description: The dealership's IANA time zone, which `date` is local to
+        slots:
+          description: Bookable starts on the local grid, in order. Empty for a past day
+            or one beyond the booking horizon.
+          type: array
+          items:
+            $ref: "#/components/schemas/SlotDto"
+      required:
+        - dealershipId
+        - serviceTypeId
+        - date
+        - timeZone
+        - slots
     AppointmentStatus:
       type: string
       enum:

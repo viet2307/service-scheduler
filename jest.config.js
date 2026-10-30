@@ -23,6 +23,10 @@ module.exports = {
     '!src/openapi/generate.ts',
   ],
   coverageDirectory: 'coverage',
+  // The domain core decides what is bookable, so CI fails when its tests stop covering it (SD §11).
+  coverageThreshold: {
+    './src/domain/': { lines: 95, branches: 95 },
+  },
   testTimeout: 30_000,
   projects: [
     {
