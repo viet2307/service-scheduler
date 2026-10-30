@@ -35,6 +35,7 @@ Swagger UI is served at http://localhost:3000/docs (JSON at `/docs/openapi.json`
 | `GET /v1/service-types`                | Service types with their duration, skill and bay type     |
 | `GET /v1/dealerships/{id}/technicians` | A dealership's technicians with their skills              |
 | `GET /v1/dealerships/{id}/bays`        | A dealership's service bays                               |
+| `GET /v1/appointments/{id}`            | One appointment, including a cancelled one                |
 | `GET /health/live`                     | Liveness                                                  |
 | `GET /health/ready`                    | Readiness: database reachable and every migration applied |
 

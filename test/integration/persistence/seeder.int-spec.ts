@@ -12,6 +12,9 @@ const SEEDED_TABLES = [
   'technician',
   'technician_skill',
   'service_bay',
+  'customer',
+  'vehicle',
+  'appointment',
 ];
 
 const id = (suffix: string) => `01a16194-0000-7000-8000-${suffix}`;
@@ -62,10 +65,16 @@ describe('seedDemoData', () => {
         .select('code')
         .where('id', '=', id('0000000000a1'))
         .executeTakeFirst(),
+      db
+        .selectFrom('appointment')
+        .select('status')
+        .where('id', '=', id('0000000000d1'))
+        .executeTakeFirst(),
     ]);
     expect(found).toEqual([
       { timezone: 'Asia/Ho_Chi_Minh' },
       { code: 'EV_BATTERY_CHECK' },
+      { status: 'COMPLETED' },
     ]);
   });
 
