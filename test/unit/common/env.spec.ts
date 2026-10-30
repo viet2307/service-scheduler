@@ -12,6 +12,9 @@ describe('validateEnv', () => {
       DATABASE_POOL_MAX: 10,
       DATABASE_STATEMENT_TIMEOUT_MS: 5000,
       SWAGGER_ENABLED: true,
+      BOOKING_SLOT_GRID_MINUTES: 15,
+      BOOKING_MIN_LEAD_MINUTES: 30,
+      BOOKING_HORIZON_DAYS: 90,
     });
   });
 
@@ -33,5 +36,24 @@ describe('validateEnv', () => {
       /DATABASE_URL[\s\S]*PORT[\s\S]*LOG_LEVEL|PORT[\s\S]*LOG_LEVEL[\s\S]*DATABASE_URL/,
     );
     expect(() => validateEnv({})).toThrow(/DATABASE_URL/);
+  });
+
+  it.each([
+    ['BOOKING_SLOT_GRID_MINUTES', '7'],
+    ['BOOKING_SLOT_GRID_MINUTES', '90'],
+    ['BOOKING_SLOT_GRID_MINUTES', '7.5'],
+    ['BOOKING_MIN_LEAD_MINUTES', '-1'],
+    ['BOOKING_HORIZON_DAYS', '0'],
+    ['BOOKING_HORIZON_DAYS', '366'],
+  ])('rejects %s=%s', (name, value) => {
+    expect(() => validateEnv({ DATABASE_URL, [name]: value })).toThrow(
+      new RegExp(name),
+    );
+  });
+
+  it('accepts a grid that divides the hour', () => {
+    expect(
+      validateEnv({ DATABASE_URL, BOOKING_SLOT_GRID_MINUTES: '20' }),
+    ).toMatchObject({ BOOKING_SLOT_GRID_MINUTES: 20 });
   });
 });
