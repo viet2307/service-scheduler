@@ -30,14 +30,15 @@ Swagger UI is served at http://localhost:3000/docs (JSON at `/docs/openapi.json`
 
 ## Endpoints
 
-| Method and path                        | Purpose                                                   |
-| -------------------------------------- | --------------------------------------------------------- |
-| `GET /v1/service-types`                | Service types with their duration, skill and bay type     |
-| `GET /v1/dealerships/{id}/technicians` | A dealership's technicians with their skills              |
-| `GET /v1/dealerships/{id}/bays`        | A dealership's service bays                               |
-| `GET /v1/appointments/{id}`            | One appointment, including a cancelled one                |
-| `GET /health/live`                     | Liveness                                                  |
-| `GET /health/ready`                    | Readiness: database reachable and every migration applied |
+| Method and path                                                        | Purpose                                                                                  |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `GET /v1/service-types`                                                | Service types with their duration, skill and bay type                                    |
+| `GET /v1/dealerships/{id}/technicians`                                 | A dealership's technicians with their skills                                             |
+| `GET /v1/dealerships/{id}/bays`                                        | A dealership's service bays                                                              |
+| `GET /v1/dealerships/{id}/availability?serviceTypeId=&date=YYYY-MM-DD` | Bookable start times on one local day, with how many technicians and bays are still free |
+| `GET /v1/appointments/{id}`                                            | One appointment, including a cancelled one                                               |
+| `GET /health/live`                                                     | Liveness                                                                                 |
+| `GET /health/ready`                                                    | Readiness: database reachable and every migration applied                                |
 
 ## Demo
 
@@ -77,6 +78,8 @@ New features are assembled from these pieces instead of re-solving the same conc
 | Database errors   | `isPgError(error, PgErrorCode.EXCLUSION_VIOLATION)`, `violatedConstraint(error)`; lock timeouts, serialization failures and lost connections become `503` with `Retry-After`. |
 | Migrations        | Forward-only `migrations/<timestamp>_<name>.sql`, applied by Kysely's `Migrator` under an advisory lock. `/health/ready` stays `503` until all are applied.                   |
 | Configuration     | Typed and validated at startup (`src/common/config/env.ts`); see [.env.example](.env.example).                                                                                |
+| Time and policy   | `@InjectClock()` for "now" and `@InjectBookingPolicy()` for the booking settings, never `new Date()` or `ConfigService` in business logic, so tests can fix both.             |
+| Domain core       | `src/domain`: interval algebra, calendar and time zones (luxon), slot finder. Pure functions over epoch-millisecond intervals, property-tested, 95 % coverage gate in CI.     |
 
 ## Docker
 
@@ -125,6 +128,8 @@ src/
   common/            config, errors, decorators, DTOs, base controller, validation
   persistence/       Kysely, transactions, repositories, migrator, seeder
   reference-data/    service types, technicians and bays
+  availability/      bookable start times
+  booking/           appointments
   health/            liveness and readiness
   telemetry/         OpenTelemetry SDK
   openapi/           document builder and generator

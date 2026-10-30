@@ -42,6 +42,14 @@ export abstract class BaseRepository<T extends TableWithId> {
     return this.table;
   }
 
+  /** `serviceType` or `service_type` → `service type`, for error messages. */
+  private get resourceName(): string {
+    return this.tableName
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replaceAll('_', ' ')
+      .toLowerCase();
+  }
+
   async findById(id: string): Promise<Row<T> | undefined> {
     const row = await this.anyDb
       .selectFrom(this.tableName)
@@ -53,7 +61,7 @@ export abstract class BaseRepository<T extends TableWithId> {
 
   async getById(id: string): Promise<Row<T>> {
     const row = await this.findById(id);
-    if (!row) throw AppError.notFound(this.tableName.replaceAll('_', ' '), id);
+    if (!row) throw AppError.notFound(this.resourceName, id);
     return row;
   }
 
