@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { jsonBuildObject } from 'kysely/helpers/postgres';
 import { BaseRepository } from '../base.repository';
+import { overlapsRange, TimeWindow } from '../ranges';
 
 @Injectable()
 export class AppointmentRepository extends BaseRepository<'appointment'> {
@@ -40,5 +41,42 @@ export class AppointmentRepository extends BaseRepository<'appointment'> {
       ])
       .where('a.id', '=', id)
       .executeTakeFirst();
+  }
+
+  // The two busy queries repeat their constraint's dealership, range and status predicates,
+  // so each can use that constraint's GiST index (evidence E1).
+
+  /** Appointments that still block these technicians (any status but CANCELLED) and overlap the window. */
+  async findBusyTechnicians(
+    dealershipId: string,
+    technicianIds: readonly string[],
+    window: TimeWindow,
+  ) {
+    if (!technicianIds.length) return [];
+    return this.db
+      .selectFrom('appointment')
+      .select(['technicianId', 'startAt', 'endAt'])
+      .where('dealershipId', '=', dealershipId)
+      .where('technicianId', 'in', technicianIds)
+      .where(overlapsRange(window))
+      .where('status', '<>', 'CANCELLED')
+      .execute();
+  }
+
+  /** Appointments that still block these bays and overlap the window. */
+  async findBusyBays(
+    dealershipId: string,
+    bayIds: readonly string[],
+    window: TimeWindow,
+  ) {
+    if (!bayIds.length) return [];
+    return this.db
+      .selectFrom('appointment')
+      .select(['bayId', 'startAt', 'endAt'])
+      .where('dealershipId', '=', dealershipId)
+      .where('bayId', 'in', bayIds)
+      .where(overlapsRange(window))
+      .where('status', '<>', 'CANCELLED')
+      .execute();
   }
 }
