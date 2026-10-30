@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon';
-import { Interval, intersect } from './interval';
+import { Interval, intersect, MINUTE } from './interval';
 
 /** One weekday's opening hours as local wall-clock times, `HH:mm` or `HH:mm:ss`. */
 export interface OpeningHours {
@@ -7,8 +7,6 @@ export interface OpeningHours {
   readonly opensAt: string;
   readonly closesAt: string;
 }
-
-const MINUTE = 60_000;
 
 /** `[local midnight, next local midnight)` of `date` (`YYYY-MM-DD`) in `zone`: 23 or 25 hours on a DST change day. */
 export function localDayWindow(date: string, zone: string): Interval {

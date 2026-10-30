@@ -4,6 +4,8 @@ export interface Interval {
   readonly end: number;
 }
 
+export const MINUTE = 60_000;
+
 /** Whether they share an instant; like PostgreSQL's `&&`, an empty interval overlaps nothing. */
 export const overlaps = (a: Interval, b: Interval): boolean =>
   Math.max(a.start, b.start) < Math.min(a.end, b.end);
