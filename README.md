@@ -46,6 +46,13 @@ Swagger UI is served at http://localhost:3000/docs (JSON at `/docs/openapi.json`
 
 `npm run db:seed` loads fictional demo data from [seeds/demo.sql](seeds/demo.sql). The ids are fixed, so the requests in [requests.http](requests.http) work as written. The seed is re-runnable and refuses to run when `NODE_ENV=production`; it is not a migration. With Docker, `docker compose --profile demo up` seeds after migrating.
 
+Two scripts walk through the API on that data. Both need `curl` and `jq`, and both cancel what they booked, so they can run again:
+
+- `scripts/demo.sh [YYYY-MM-DD]`: availability, a booking, a replay with the same `Idempotency-Key`, the key reused for another request (`422`), the same slot filled until `409` with alternatives, then cancel and re-book. It waits for Enter between steps; `DEMO_NO_PAUSE=1` runs straight through.
+- `scripts/race.sh [N]`: sends N bookings for the same slot at once, each for its own vehicle, counts the responses (exactly as many `201`s as the availability check says can fit, `409` for the rest) and runs [scripts/sql/reconcile-overlaps.sql](scripts/sql/reconcile-overlaps.sql) to show that nothing was double-booked. It also needs `psql`, or Docker Compose, to reach the database.
+
+With the compose stack running, Jaeger shows each booking's spans (a lost race appears as a second `booking.insert_attempt`), and Prometheus shows the `scheduler_booking_*` series.
+
 ## Scripts
 
 | Script                     | Purpose                                                        |
@@ -138,6 +145,7 @@ src/
   domain/            pure business rules (no framework imports; enforced by ESLint)
 migrations/          timestamp-prefixed SQL migrations
 seeds/               demo data (not migrations)
+scripts/            demo.sh and race.sh (see Demo)
 scripts/sql/         operational queries, e.g. the hourly overlap reconciliation
 requests.http        example requests against the demo data
 test/
