@@ -68,6 +68,26 @@ export class AppointmentRepository extends BaseRepository<'appointment'> {
     `.execute(this.db);
   }
 
+  /**
+   * Compare-and-set on status: only a confirmed appointment changes, so of two concurrent cancels one
+   * matches and the other finds it already cancelled, and a completed job is never cancelled.
+   * Undefined when nothing matched: the id is unknown or the appointment is no longer confirmed.
+   * The cancelled row falls outside the exclusion constraints' predicate, so its slot is free at once.
+   */
+  cancel(id: string) {
+    return this.db
+      .updateTable('appointment')
+      .set({
+        status: 'CANCELLED',
+        cancelledAt: sql<Date>`now()`,
+        updatedAt: sql<Date>`now()`,
+      })
+      .where('id', '=', id)
+      .where('status', '=', 'CONFIRMED')
+      .returningAll()
+      .executeTakeFirst();
+  }
+
   /** Repeats appointment_no_vehicle_overlap's range and status predicates, so its GiST index serves the check. */
   async hasVehicleOverlap(vehicleId: string, window: TimeWindow) {
     const row = await this.db
