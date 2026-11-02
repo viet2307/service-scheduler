@@ -12,16 +12,7 @@ import {
   createScenario,
   scenario,
 } from '../../support/fixtures';
-import { holdInsert } from '../../support/transactions';
-
-function watch(promise: Promise<unknown>) {
-  const state = { settled: false };
-  promise.then(
-    () => (state.settled = true),
-    () => (state.settled = true),
-  );
-  return state;
-}
+import { holdInsert, watch } from '../../support/transactions';
 
 // Ports of docs/evidence Race B and L1: the guarantee under real parallel connections.
 describe('concurrent bookings', () => {

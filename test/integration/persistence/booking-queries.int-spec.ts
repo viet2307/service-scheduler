@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import { Kysely, sql } from 'kysely';
 import { createDatabase } from '@/persistence/database';
 import type { DB } from '@/persistence/database.types';
@@ -11,11 +12,13 @@ import {
   createScenario,
   scenario,
 } from '../../support/fixtures';
+import { watch } from '../../support/transactions';
 
 const window = (from: string, to: string) => ({ from: at(from), to: at(to) });
 
 describe('Booking queries', () => {
   let db: Kysely<DB>;
+  let host: TransactionHost;
   let appointments: AppointmentRepository;
 
   const count = () =>
@@ -29,7 +32,8 @@ describe('Booking queries', () => {
     db = createDatabase({
       connectionString: await createMigratedTestDatabase(),
     });
-    appointments = new AppointmentRepository(new TransactionHost(db));
+    host = new TransactionHost(db);
+    appointments = new AppointmentRepository(host);
     await createScenario(db);
   });
 
@@ -141,6 +145,83 @@ describe('Booking queries', () => {
           window('09:00', '10:00'),
         ),
       ).toBe(false);
+    });
+  });
+
+  describe('lockForBooking', () => {
+    const [t1, t2] = scenario.technicianIds;
+    const [b1, b2] = scenario.bayIds;
+    const [v1, v2] = scenario.vehicleIds;
+
+    /** Takes the locks for a booking in a transaction that stays open until released. */
+    function holdLocks(
+      resources: Parameters<typeof appointments.lockForBooking>[0],
+    ) {
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => (release = resolve));
+      let signalLocked!: () => void;
+      const locked = new Promise<void>((resolve) => (signalLocked = resolve));
+      const done = host.run(async () => {
+        await appointments.lockForBooking(resources);
+        signalLocked();
+        await released;
+      });
+      return { locked, done, release };
+    }
+
+    it.each([
+      ['technician', { technicianId: t1, bayId: b2, vehicleId: v2 }],
+      ['bay', { technicianId: t2, bayId: b1, vehicleId: v2 }],
+      ['vehicle', { technicianId: t2, bayId: b2, vehicleId: v1 }],
+    ])(
+      'makes a booking for the same %s wait until the first transaction ends',
+      async (_, resources) => {
+        const holder = holdLocks({
+          technicianId: t1,
+          bayId: b1,
+          vehicleId: v1,
+        });
+        await holder.locked;
+
+        const contender = host.run(() =>
+          appointments.lockForBooking(resources),
+        );
+        const state = watch(contender);
+        await sleep(200);
+        expect(state.settled).toBe(false);
+
+        holder.release();
+        await holder.done;
+        await expect(contender).resolves.toBeUndefined();
+      },
+    );
+
+    it('lets a booking that shares nothing through', async () => {
+      const holder = holdLocks({ technicianId: t1, bayId: b1, vehicleId: v1 });
+      await holder.locked;
+
+      await expect(
+        host.run(() =>
+          appointments.lockForBooking({
+            technicianId: t2,
+            bayId: b2,
+            vehicleId: v2,
+          }),
+        ),
+      ).resolves.toBeUndefined();
+
+      holder.release();
+      await holder.done;
+    });
+
+    it('refuses to run outside a transaction, where the lock would not last', async () => {
+      await expect(
+        appointments.lockForBooking({
+          technicianId: t1,
+          bayId: b1,
+          vehicleId: v1,
+        }),
+      ).rejects.toThrow('inside the booking transaction');
     });
   });
 });

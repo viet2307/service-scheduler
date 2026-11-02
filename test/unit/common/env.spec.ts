@@ -16,6 +16,7 @@ describe('validateEnv', () => {
       BOOKING_MIN_LEAD_MINUTES: 30,
       BOOKING_HORIZON_DAYS: 90,
       BOOKING_LOCK_TIMEOUT_MS: 2000,
+      BOOKING_MAX_ATTEMPTS: 3,
     });
   });
 
@@ -48,6 +49,8 @@ describe('validateEnv', () => {
     ['BOOKING_HORIZON_DAYS', '366'],
     ['BOOKING_LOCK_TIMEOUT_MS', '99'],
     ['BOOKING_LOCK_TIMEOUT_MS', '10001'],
+    ['BOOKING_MAX_ATTEMPTS', '0'],
+    ['BOOKING_MAX_ATTEMPTS', '11'],
   ])('rejects %s=%s', (name, value) => {
     expect(() => validateEnv({ DATABASE_URL, [name]: value })).toThrow(
       new RegExp(name),

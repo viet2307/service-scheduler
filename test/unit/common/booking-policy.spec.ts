@@ -32,6 +32,7 @@ describe('CommonModule', () => {
       minLeadMinutes: 30,
       horizonDays: 14,
       lockTimeoutMs: 2000,
+      maxAttempts: 3,
     });
   });
 
