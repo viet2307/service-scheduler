@@ -25,6 +25,22 @@ INSERT INTO dealership (id, name, timezone) VALUES
   ('01a16194-0000-7000-8000-000000000002', 'London Riverside Service Centre', 'Europe/London')
 ON CONFLICT (id) DO NOTHING;
 
+-- Local wall-clock times in each dealership's zone; a weekday without a row is closed.
+INSERT INTO dealership_opening_hours (dealership_id, iso_weekday, opens_at, closes_at) VALUES
+  ('01a16194-0000-7000-8000-000000000001', 1, '08:00', '17:30'),
+  ('01a16194-0000-7000-8000-000000000001', 2, '08:00', '17:30'),
+  ('01a16194-0000-7000-8000-000000000001', 3, '08:00', '17:30'),
+  ('01a16194-0000-7000-8000-000000000001', 4, '08:00', '17:30'),
+  ('01a16194-0000-7000-8000-000000000001', 5, '08:00', '17:30'),
+  ('01a16194-0000-7000-8000-000000000001', 6, '08:00', '17:30'),
+  ('01a16194-0000-7000-8000-000000000002', 1, '08:00', '17:30'),
+  ('01a16194-0000-7000-8000-000000000002', 2, '08:00', '17:30'),
+  ('01a16194-0000-7000-8000-000000000002', 3, '08:00', '17:30'),
+  ('01a16194-0000-7000-8000-000000000002', 4, '08:00', '17:30'),
+  ('01a16194-0000-7000-8000-000000000002', 5, '08:00', '17:30'),
+  ('01a16194-0000-7000-8000-000000000002', 6, '09:00', '13:00')
+ON CONFLICT (dealership_id, iso_weekday) DO NOTHING;
+
 -- Linh Tran is the only EV technician in Saigon and also holds the general skills, so the
 -- assignment policy should keep Linh free for EV work and give oil services to the generalists.
 INSERT INTO technician (id, dealership_id, display_name, is_active) VALUES
@@ -48,6 +64,29 @@ INSERT INTO technician_skill (technician_id, skill_code) VALUES
   ('01a16194-0000-7000-8000-0000000000f5', 'GENERAL'),
   ('01a16194-0000-7000-8000-0000000000f6', 'GENERAL')
 ON CONFLICT (technician_id, skill_code) DO NOTHING;
+
+-- Shifts are absolute timestamps (A4), so every run generates them for the next 30 local days in
+-- each dealership's zone; days seeded by an earlier run hit the overlap constraint and are skipped.
+-- Minh Nguyen's morning and afternoon shifts touch, so they form one free block. Bao Vo is inactive.
+INSERT INTO technician_shift (technician_id, start_at, end_at)
+SELECT r.technician_id, (day + r.starts) AT TIME ZONE d.timezone, (day + r.ends) AT TIME ZONE d.timezone
+FROM (VALUES
+  ('01a16194-0000-7000-8000-0000000000f1'::uuid, 1, 5, time '08:00', time '17:30'),
+  ('01a16194-0000-7000-8000-0000000000f2'::uuid, 1, 6, time '08:00', time '12:00'),
+  ('01a16194-0000-7000-8000-0000000000f2'::uuid, 1, 6, time '12:00', time '17:30'),
+  ('01a16194-0000-7000-8000-0000000000f3'::uuid, 2, 6, time '08:00', time '17:30'),
+  ('01a16194-0000-7000-8000-0000000000f5'::uuid, 1, 5, time '08:00', time '17:30'),
+  ('01a16194-0000-7000-8000-0000000000f6'::uuid, 1, 6, time '08:00', time '17:30')
+) AS r (technician_id, first_weekday, last_weekday, starts, ends)
+JOIN technician t ON t.id = r.technician_id
+JOIN dealership d ON d.id = t.dealership_id
+CROSS JOIN LATERAL generate_series(
+  date_trunc('day', now() AT TIME ZONE d.timezone),
+  date_trunc('day', now() AT TIME ZONE d.timezone) + interval '29 days',
+  interval '1 day'
+) AS day
+WHERE extract(isodow FROM day) BETWEEN r.first_weekday AND r.last_weekday
+ON CONFLICT ON CONSTRAINT technician_shift_no_overlap DO NOTHING;
 
 INSERT INTO service_bay (id, dealership_id, name, bay_type) VALUES
   ('01a16194-0000-7000-8000-0000000000b1', '01a16194-0000-7000-8000-000000000001', 'Bay 1',             'LIFT'),

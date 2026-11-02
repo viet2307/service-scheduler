@@ -30,6 +30,9 @@ const LOG_LEVELS = [
 ] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
+/** Divisors of 60, so every whole hour is a grid point. */
+const SLOT_GRID_MINUTES = [5, 6, 10, 12, 15, 20, 30, 60];
+
 const toBoolean = ({ value }: { value: unknown }) =>
   value === true || value === 'true';
 
@@ -83,6 +86,21 @@ export class Env {
   @IsInt()
   @Min(0)
   SHUTDOWN_GRACE_PERIOD_MS = 5000;
+
+  @Type(() => Number)
+  @IsIn(SLOT_GRID_MINUTES)
+  BOOKING_SLOT_GRID_MINUTES = 15;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  BOOKING_MIN_LEAD_MINUTES = 30;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  BOOKING_HORIZON_DAYS = 90;
 }
 
 export function validateEnv(raw: Record<string, unknown>): Env {

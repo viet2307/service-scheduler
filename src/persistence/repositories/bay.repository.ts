@@ -14,4 +14,16 @@ export class BayRepository extends BaseRepository<'serviceBay'> {
       .orderBy('name')
       .execute();
   }
+
+  /** Active bays of `bayType`. */
+  findCompatible(dealershipId: string, bayType: string) {
+    return this.db
+      .selectFrom('serviceBay')
+      .select(['id', 'name'])
+      .where('dealershipId', '=', dealershipId)
+      .where('bayType', '=', bayType)
+      .where('isActive', '=', true)
+      .orderBy('name')
+      .execute();
+  }
 }

@@ -17,6 +17,13 @@ GET {{baseUrl}}/v1/dealerships/{{dealershipId}}/technicians
 ### Service bays of a dealership
 GET {{baseUrl}}/v1/dealerships/{{dealershipId}}/bays
 
+# Oil service. Shifts are seeded for the next 30 days: pick a date in that range.
+@serviceTypeId = 01a16194-0000-7000-8000-0000000000a2
+@date = 2026-11-03
+
+### Bookable start times on one day, with free technician and bay counts
+GET {{baseUrl}}/v1/dealerships/{{dealershipId}}/availability?serviceTypeId={{serviceTypeId}}&date={{date}}
+
 # The demo seed has one past, completed appointment.
 @appointmentId = 01a16194-0000-7000-8000-0000000000d1
 

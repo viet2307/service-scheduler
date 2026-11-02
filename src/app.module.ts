@@ -2,7 +2,9 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
+import { AvailabilityModule } from './availability/availability.module';
 import { BookingModule } from './booking/booking.module';
+import { CommonModule } from './common/common.module';
 import { validateEnv } from './common/config/env';
 import { ProblemDetailsFilter } from './common/errors';
 import { createLoggerParams } from './common/logger';
@@ -24,10 +26,12 @@ import { TelemetryModule } from './telemetry/telemetry.module';
       inject: [ConfigService],
       useFactory: createLoggerParams,
     }),
+    CommonModule,
     DatabaseModule,
     TelemetryModule,
     HealthModule,
     ReferenceDataModule,
+    AvailabilityModule,
     BookingModule,
   ],
   providers: [
