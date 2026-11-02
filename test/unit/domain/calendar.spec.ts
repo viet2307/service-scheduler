@@ -6,6 +6,7 @@ import {
   isOnGrid,
   localDateOf,
   localDayWindow,
+  localDayWindows,
   MINUTE,
   OpeningHours,
   openingIntervals,
@@ -170,6 +171,14 @@ describe('calendar', () => {
         ),
       ).toEqual([span(['2026-11-02T05:00:00Z', '2026-11-02T10:30:00Z'])]);
     });
+  });
+
+  it('localDayWindows lays local days end to end across a DST change', () => {
+    const days = localDayWindows('2026-10-24', 'Europe/London', 3);
+    expect(days.map((d) => (d.end - d.start) / HOUR)).toEqual([24, 25, 24]);
+    expect(days[1].start).toBe(days[0].end);
+    expect(days[2].start).toBe(days[1].end);
+    expect(local(days[2].start, 'Europe/London')).toBe('2026-10-26 00:00');
   });
 
   describe('isOnGrid', () => {
