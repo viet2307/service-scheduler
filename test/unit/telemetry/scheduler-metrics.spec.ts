@@ -80,4 +80,33 @@ describe('SchedulerMetrics', () => {
       },
     ]);
   });
+
+  it('counts lost races per resource', async () => {
+    const schedulerMetrics = new SchedulerMetrics();
+    schedulerMetrics.conflictRetry('technician');
+    schedulerMetrics.conflictRetry('bay');
+    schedulerMetrics.conflictRetry('technician');
+
+    const metric = await exported('scheduler.booking.conflict_retry');
+    expect(metric.dataPointType).toBe(DataPointType.SUM);
+    expect(
+      metric.dataPoints.map(({ attributes, value }) => ({ attributes, value })),
+    ).toEqual([
+      { attributes: { resource: 'technician' }, value: 2 },
+      { attributes: { resource: 'bay' }, value: 1 },
+    ]);
+  });
+
+  it('records insert attempts per booking, without labels', async () => {
+    const schedulerMetrics = new SchedulerMetrics();
+    schedulerMetrics.bookingAttempts(1);
+    schedulerMetrics.bookingAttempts(3);
+
+    const metric = await exported('scheduler.booking.attempts');
+    expect(metric.descriptor.unit).toBe('{attempt}');
+    expect(metric.dataPointType).toBe(DataPointType.HISTOGRAM);
+    expect(metric.dataPoints).toHaveLength(1);
+    expect(metric.dataPoints[0].attributes).toEqual({});
+    expect(metric.dataPoints[0].value).toMatchObject({ count: 2, sum: 4 });
+  });
 });

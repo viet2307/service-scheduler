@@ -138,7 +138,11 @@ function setup() {
   const transactions = {
     run: jest.fn((fn: () => Promise<unknown>) => fn()),
   };
-  const metrics = { bookingOutcome: jest.fn() };
+  const metrics = {
+    bookingOutcome: jest.fn(),
+    conflictRetry: jest.fn(),
+    bookingAttempts: jest.fn(),
+  };
   const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
 
   const service = new BookingService(
@@ -307,7 +311,7 @@ describe('BookingService', () => {
     it.each(Object.keys(lostRace) as (keyof typeof lostRace)[])(
       'retries a race lost on the %s with a re-read snapshot',
       async (resource) => {
-        const { book, appointments, availability } = setup();
+        const { book, appointments, availability, metrics, logger } = setup();
         appointments.insertIfKeyIsNew
           .mockRejectedValueOnce(lostRace[resource]())
           .mockResolvedValueOnce({ id: 'a2' });
@@ -323,6 +327,18 @@ describe('BookingService', () => {
         expect(availability.loadSnapshot).toHaveBeenCalledTimes(2);
         expect(appointments.insertIfKeyIsNew).toHaveBeenLastCalledWith(
           expect.objectContaining({ technicianId: 'specialist', bayId: 'b2' }),
+        );
+        expect(metrics.conflictRetry).toHaveBeenCalledWith(resource);
+        expect(metrics.bookingAttempts).toHaveBeenCalledWith(2);
+        // A retry is worth a warning even when the booking succeeds.
+        expect(logger.warn).toHaveBeenCalledWith(
+          expect.objectContaining({
+            outcome: 'confirmed',
+            attempts: 2,
+            technician_id: 'specialist',
+            bay_id: 'b2',
+          }),
+          'booking decision',
         );
       },
     );
@@ -341,7 +357,7 @@ describe('BookingService', () => {
     });
 
     it('answers SLOT_UNAVAILABLE once every attempt is lost', async () => {
-      const { book, appointments, availability } = setup();
+      const { book, appointments, availability, metrics } = setup();
       appointments.insertIfKeyIsNew.mockRejectedValue(lostRace.bay());
 
       await expect(book()).rejects.toMatchObject({
@@ -349,6 +365,8 @@ describe('BookingService', () => {
       });
       expect(appointments.insertIfKeyIsNew).toHaveBeenCalledTimes(3);
       expect(availability.loadSnapshot).toHaveBeenCalledTimes(3);
+      expect(metrics.conflictRetry).toHaveBeenCalledTimes(3);
+      expect(metrics.bookingAttempts).toHaveBeenCalledWith(3);
     });
 
     it.each([
@@ -519,5 +537,19 @@ describe('BookingService', () => {
         );
       },
     );
+
+    it('records attempts only for bookings that reached the insert', async () => {
+      const confirmed = setup();
+      await confirmed.book();
+      expect(confirmed.metrics.bookingAttempts).toHaveBeenCalledWith(1);
+
+      const replayed = setup();
+      replayed.appointments.findByIdempotencyKey.mockResolvedValue({
+        id: 'a0',
+        requestFingerprint: FINGERPRINT,
+      });
+      await replayed.book();
+      expect(replayed.metrics.bookingAttempts).not.toHaveBeenCalled();
+    });
   });
 });

@@ -107,13 +107,12 @@ const OUTCOME_BY_CODE: Partial<Record<ErrorCode, BookingOutcome>> = {
 const outcomeOf = (error: unknown): BookingOutcome =>
   (error instanceof AppError && OUTCOME_BY_CODE[error.code]) || 'error';
 
-/** Error is kept for 5xx, so alerts on error logs fire for faults; refusals are warnings. */
-const logLevelOf = (outcome: BookingOutcome) =>
-  outcome === 'error'
-    ? 'error'
-    : outcome === 'confirmed' || outcome === 'replayed'
-      ? 'info'
-      : 'warn';
+/** Error is kept for 5xx, so alerts on error logs fire for faults; retries and refusals are warnings. */
+const logLevelOf = ({ outcome, attempts }: BookingDecision) => {
+  if (outcome === 'error') return 'error';
+  const decided = outcome === 'confirmed' || outcome === 'replayed';
+  return decided && attempts <= 1 ? 'info' : 'warn';
+};
 
 const describeSlot = (slot: Interval, zone: string) =>
   `${formatLocal(slot.start, zone)} to ${formatLocal(slot.end, zone)} on ${localDateOf(slot.start, zone)} (${zone})`;
@@ -196,8 +195,10 @@ export class BookingService {
         decision.outcome,
         decision.serviceTypeCode ?? 'unknown',
       );
+      if (decision.attempts > 0)
+        this.metrics.bookingAttempts(decision.attempts);
       // One wide record explains the whole booking. IDs only, never names, VIN or contact details.
-      this.logger[logLevelOf(decision.outcome)](
+      this.logger[logLevelOf(decision)](
         {
           dealership_id: command.dealershipId,
           service_type: decision.serviceTypeCode,
@@ -301,6 +302,7 @@ export class BookingService {
         case 'vehicle_taken':
           throw vehicleAlreadyBooked(vehicle.id, slot, zone);
         case 'lost_race':
+          this.metrics.conflictRetry(result.resource);
           continue;
       }
     }
