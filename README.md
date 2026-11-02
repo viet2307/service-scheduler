@@ -46,6 +46,13 @@ Swagger UI is served at http://localhost:3000/docs (JSON at `/docs/openapi.json`
 
 `npm run db:seed` loads fictional demo data from [seeds/demo.sql](seeds/demo.sql). The ids are fixed, so the requests in [requests.http](requests.http) work as written. The seed is re-runnable and refuses to run when `NODE_ENV=production`; it is not a migration. With Docker, `docker compose --profile demo up` seeds after migrating.
 
+Two scripts walk through the API on that data. Both need `curl` and `jq`, and both cancel what they booked, so they can run again:
+
+- `scripts/demo.sh [YYYY-MM-DD]`: availability, a booking, a replay with the same `Idempotency-Key`, the key reused for another request (`422`), the same slot filled until `409` with alternatives, then cancel and re-book. It waits for Enter between steps; `DEMO_NO_PAUSE=1` runs straight through.
+- `scripts/race.sh [N]`: sends N bookings for the same slot at once, each for its own vehicle, counts the responses (exactly as many `201`s as the availability check says can fit, `409` for the rest) and runs [scripts/sql/reconcile-overlaps.sql](scripts/sql/reconcile-overlaps.sql) to show that nothing was double-booked. It also needs `psql`, or Docker Compose, to reach the database.
+
+With the compose stack running, Jaeger shows each booking's spans (a lost race appears as a second `booking.insert_attempt`), and Prometheus shows the `scheduler_booking_*` series.
+
 ## Scripts
 
 | Script                     | Purpose                                                        |
@@ -138,6 +145,7 @@ src/
   domain/            pure business rules (no framework imports; enforced by ESLint)
 migrations/          timestamp-prefixed SQL migrations
 seeds/               demo data (not migrations)
+scripts/            demo.sh and race.sh (see Demo)
 scripts/sql/         operational queries, e.g. the hourly overlap reconciliation
 requests.http        example requests against the demo data
 test/
@@ -147,3 +155,53 @@ test/
 ```
 
 See [AGENTS.md](AGENTS.md) for the rules every change (human or AI-generated) must follow.
+
+## AI Collaboration Narrative
+
+I split the work by where judgement matters most. The system design, the architecture and every decision that shapes them are mine; there I used AI as a research assistant and as a critic of my own design. The code and the tests were written by an AI coding agent (Claude Code), inside rules I set and through reviews I did. Design research and the database verification scripts ran with Claude (claude.ai).
+
+### Designing the system: my decisions, AI as researcher and critic
+
+- **I framed the problem before looking at solutions.** Requirements became invariants, and for each invariant I asked one question: can two concurrent requests break it? The answer decided whether the database or the application enforces it.
+- **I set the evidence bar.** A claim about PostgreSQL entered the design only after a script proved it on PostgreSQL 18.4, and decisions rest on primary sources rather than summaries. That rule changed the design several times. `INSERT … ON CONFLICT DO NOTHING` without a target silently skips a double booking, which became rule 1 in [AGENTS.md](AGENTS.md). PostgreSQL 18's `WITHOUT OVERLAPS` cannot ignore cancelled appointments, so I kept explicit `EXCLUDE` constraints. Range partitioning by time breaks those constraints, so they include `dealership_id` now, ready for hash partitioning later.
+- **The guarantee belongs in the database, and I still asked for the alternatives.** From the start I held that the invariants had to be enforced in the database layer: constraints that check every write, and compare-and-set updates (a cancel only changes an appointment that is still confirmed), never check-then-write in application code. Before committing to it I asked the AI for feedback and for every other option with how each one fails: check then insert, row locks, `SERIALIZABLE`, a distributed lock, exclusion constraints. The comparison confirmed the choice and became the first decision record, together with the race that breaks check-then-insert, reproduced on PostgreSQL 18.4.
+- **One deployable, because the guarantee needs one transaction.** I also asked whether booking should later be split into microservices. My answer was no: the technician, the bay, the vehicle and the appointment must be checked together in one transaction, and that is what makes a double booking impossible. Split across services, one `INSERT` becomes a saga with expiring holds and compensation steps, a lot of overhead for little benefit at this stage. So it is a modular monolith whose module boundaries would let a service be extracted around that consistency boundary, never through it. The AI backed my reasoning with numbers. Under stated assumptions (5,000 dealerships, 30 bookings each a day, 15 % of them in the busiest hour), peak load is about 6 bookings and 60 availability searches per second, which one PostgreSQL primary handles comfortably. Two bookings only contend inside one dealership, so growth can be met by spreading dealerships over independent deployments (cells) rather than by splitting functions. And a booking that calls four services at 99.9 % availability each is up only 0.999⁴ ≈ 99.6 % of the time: about 173 minutes of downtime a month instead of 43.
+- **I pushed back when a recommendation did not match my experience.** This codebase started from my own NestJS base, which used TypeORM. The AI proposed Kysely and listed TypeORM among the options it judged unfit. I challenged that, because generated TypeORM migrations can be reviewed and edited by hand. The AI then narrowed its argument to the real risk: `migration:generate` compares the entities with the live database and matches exclusion constraints by name only, so a constraint without a matching entity decorator comes out as a `DROP` in the next generated migration, and a change to a constraint's expression is not detected at all. Those constraints are the double-booking guarantee, so I chose Kysely with hand-written SQL migrations as their only source of truth, and the decision record now says TypeORM was not chosen, not that it was unfit.
+- **I use AI to attack my own design.** I regularly ask it to double-check a decision, to look for flaws, or to check one document against another: the implementation plan against the design, the design against the brief. Those reviews found real problems, such as a retry rule that would give up while technicians and bays were still free, and a trace-sampling scheme that contradicted itself. What to do with each finding was my call.
+- **Every change to the design is a recorded decision.** The implementation plan logs each one as what the design says, the recommendation and why, and I accept, change or reject it. Some of my calls went against the AI's recommendation. It proposed building Prometheus alert rules; I kept them out, because the brief asks for an observability strategy, not alerting infrastructure, and rules that no real traffic can trigger are untested code. Separate database roles stay a documented follow-up, and the load test waits until the booking logic is verified.
+
+### Reviewing the code
+
+I cut the implementation into vertical slices, one endpoint per pull request in a few small commits, so that every change the agent made stayed small enough for me to read. I reviewed each one before merging it. A review catches what tests cannot, and mine regularly sent work back:
+
+- a constant defined again in a second file instead of shared from the interval module;
+- a framework decorator used where the project has its own;
+- the response envelope my other projects use, which the agent had left out; that ended in a recorded decision, with its trade-offs, not to wrap responses here;
+- comments and commit messages that cited internal planning documents a reader of this repository cannot open; they now say what changed and why.
+
+Before accepting a choice I asked why. Each question ended in a recorded reason or a code change.
+
+### Guardrails for the agent
+
+- **[AGENTS.md](AGENTS.md) holds the hard rules**: every `ON CONFLICT` names its target, the four constraint names never change, no network calls inside the booking transaction, `src/domain` imports nothing from the framework or the database, and invariant tests are never weakened. Where tooling can check a rule, it does: ESLint enforces the domain boundary, CI fails when `openapi.yaml` drifts from the code, and coverage of `src/domain` must stay at 95 %.
+- **The database contract came before the booking code.** The schema and the invariant tests (overlaps, back-to-back bookings, cancellation, `ON CONFLICT`, races) were merged before any booking endpoint existed, as the history shows. The agent's job was to satisfy that contract, not to define it.
+- **Every slice had the same definition of done**: its e2e status-code table passes, `openapi.yaml` is regenerated, the README and `requests.http` cover the endpoint, and the whole suite is green.
+
+### Verification: tests that prove something
+
+- **A real database, never mocks.** Integration and e2e tests run on PostgreSQL 18.4 through Testcontainers, because a mock cannot prove an exclusion constraint. The e2e tests also validate responses against the committed `openapi.yaml`.
+- **Property-based tests for the domain core.** One found a real bug: an empty interval `[83, 83)` counted as overlapping `[0, 84)` ([interval.spec.ts](test/unit/domain/interval.spec.ts)). Another checks that, with every technician and bay free, the booking rules accept a start exactly when the availability search offers it.
+- **Mutation checks: break the guard, watch a test fail, restore it.** With retries switched off, the "3 technicians + 3 bays, 20 parallel requests → exactly 3 confirmed" test still passed, because later requests read a snapshot that already held the winners and never lost a race. The suite now holds the contested locks until every request is waiting ([booking-concurrency.e2e-spec.ts](test/e2e/booking-concurrency.e2e-spec.ts)), and without retries it fails on every run. Removing the status check from the cancel update makes four tests fail. The overlap reconciliation query is tested on a database whose constraints were dropped, so its empty result means something.
+- **Concurrency tests assert outcomes that hold under every interleaving** (exact counts, zero overlaps), never timing. [scripts/race.sh](scripts/race.sh) repeats the race against the running stack.
+
+### Decisions that changed behaviour while building
+
+- **Retry after a lost race.** Dropping only the resource named in the error collides again on the winner's other resource, so a retry now re-reads availability. This was caught while planning, before any code.
+- **Simultaneous inserts.** Measured on PostgreSQL 18.4, 20 bookings arriving at the same instant deadlocked in one round out of five and answered `503` instead of `409`. Advisory locks taken in key order now queue those writers; the constraints remain the guarantee.
+- **Idempotency under a race.** Two requests with the same key can collide on the vehicle constraint instead of the key, so every `409` looks the key up again before refusing.
+- **Error contract.** The extension that says why a cancel was refused would have been called `status`, which overwrites the HTTP status in problem details; it is `appointmentStatus`.
+
+### How quality was ensured
+
+- CI runs lint (including the domain boundary), the format check, the type-check, unit tests with the coverage gate, integration and e2e tests on PostgreSQL 18, the build, the `openapi.yaml` drift check and an image scan. The same sequence ran locally before each pull request.
+- The observability was checked in the compose stack, not assumed: the span tree of a booking that lost a race, the business metrics in Prometheus, and decision logs that carry IDs but never a name or a VIN.
