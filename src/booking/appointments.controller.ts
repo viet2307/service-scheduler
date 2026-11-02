@@ -1,4 +1,12 @@
-import { Body, Get, HttpStatus, Param, Post, Res } from '@nestjs/common';
+import {
+  Body,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Res,
+} from '@nestjs/common';
 import {
   ApiCreatedResponse,
   ApiOkResponse,
@@ -97,5 +105,21 @@ export class AppointmentsController extends BaseController {
   @ApiProblem(HttpStatus.NOT_FOUND)
   async get(@Param() { id }: IdParamDto) {
     return this.toDto(await this.appointments.get(id), AppointmentDto);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cancel an appointment',
+    description:
+      'Frees its technician, bay and vehicle at once; the appointment stays readable as CANCELLED. Cancelling an appointment that is already cancelled returns it unchanged, so a retry is safe without an Idempotency-Key.',
+  })
+  @ApiOkResponse({
+    type: AppointmentDto,
+    description: 'Cancelled, by this request or an earlier one',
+  })
+  @ApiProblem(HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  async cancel(@Param() { id }: IdParamDto) {
+    return this.toDto(await this.appointments.cancel(id), AppointmentDto);
   }
 }

@@ -46,3 +46,8 @@ Idempotency-Key: demo-{{date}}-0900
 
 ### One appointment
 GET {{baseUrl}}/v1/appointments/{{appointmentId}}
+
+### Cancel an appointment: frees its technician, bay and vehicle at once. The seeded one is
+### completed, so it answers 409 INVALID_STATE; use the id of the booking above to see 200,
+### and cancel it again to see the same 200.
+POST {{baseUrl}}/v1/appointments/{{appointmentId}}/cancel

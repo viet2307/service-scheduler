@@ -68,4 +68,11 @@ export class ProblemDetailsDto implements ProblemDetails {
       'SLOT_UNAVAILABLE only: the next bookable start times after the requested one, in UTC. At most 3 by default, searched up to 7 local days ahead and never past the booking horizon; may be empty.',
   })
   alternatives?: string[];
+
+  @ApiPropertyOptional({
+    example: 'COMPLETED',
+    description:
+      'INVALID_STATE only: the status that refused the operation, e.g. COMPLETED or NO_SHOW when cancelling',
+  })
+  appointmentStatus?: string;
 }

@@ -340,6 +340,60 @@ paths:
                 $ref: "#/components/schemas/ProblemDetailsDto"
       tags:
         - appointments
+  /v1/appointments/{id}/cancel:
+    post:
+      description: Frees its technician, bay and vehicle at once; the appointment
+        stays readable as CANCELLED. Cancelling an appointment that is already
+        cancelled returns it unchanged, so a retry is safe without an
+        Idempotency-Key.
+      operationId: Appointments_cancel
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            format: uuid
+            type: string
+      responses:
+        "200":
+          description: Cancelled, by this request or an earlier one
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppointmentDto"
+        "400":
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "404":
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "409":
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "500":
+          description: Internal Server Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "503":
+          description: Service Unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+      summary: Cancel an appointment
+      tags:
+        - appointments
 info:
   title: Service Scheduler API
   description: Books a qualified technician and a compatible service bay for a
@@ -408,6 +462,11 @@ components:
           items:
             type: string
             format: date-time
+        appointmentStatus:
+          type: string
+          example: COMPLETED
+          description: "INVALID_STATE only: the status that refused the operation, e.g.
+            COMPLETED or NO_SHOW when cancelling"
       required:
         - type
         - title
