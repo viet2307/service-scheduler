@@ -31,6 +31,7 @@ describe('CommonModule', () => {
       slotGridMinutes: 30,
       minLeadMinutes: 30,
       horizonDays: 14,
+      lockTimeoutMs: 2000,
     });
   });
 

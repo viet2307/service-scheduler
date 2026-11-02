@@ -8,5 +8,6 @@ import { AvailabilityService } from './availability.service';
   imports: [RepositoriesModule, TelemetryModule],
   controllers: [AvailabilityController],
   providers: [AvailabilityService],
+  exports: [AvailabilityService],
 })
 export class AvailabilityModule {}

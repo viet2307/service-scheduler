@@ -24,6 +24,23 @@ GET {{baseUrl}}/v1/dealerships/{{dealershipId}}/bays
 ### Bookable start times on one day, with free technician and bay counts
 GET {{baseUrl}}/v1/dealerships/{{dealershipId}}/availability?serviceTypeId={{serviceTypeId}}&date={{date}}
 
+@customerId = 01a16194-0000-7000-8000-0000000000c1
+@vehicleId = 01a16194-0000-7000-8000-0000000000e1
+
+### Book an oil service at 09:00 Saigon time. Sent again with the same Idempotency-Key, it
+### answers 200 with Idempotent-Replayed: true instead of booking twice.
+POST {{baseUrl}}/v1/appointments
+Content-Type: application/json
+Idempotency-Key: demo-{{date}}-0900
+
+{
+  "dealershipId": "{{dealershipId}}",
+  "customerId": "{{customerId}}",
+  "vehicleId": "{{vehicleId}}",
+  "serviceTypeId": "{{serviceTypeId}}",
+  "startAt": "{{date}}T09:00:00+07:00"
+}
+
 # The demo seed has one past, completed appointment.
 @appointmentId = 01a16194-0000-7000-8000-0000000000d1
 

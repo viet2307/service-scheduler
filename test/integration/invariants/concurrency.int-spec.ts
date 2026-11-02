@@ -12,29 +12,7 @@ import {
   createScenario,
   scenario,
 } from '../../support/fixtures';
-
-/** Holds a transaction open after inserting `values`, until released. */
-function holdInsert(db: Kysely<DB>, values: ReturnType<typeof appointment>) {
-  let release!: (outcome: 'commit' | 'rollback') => void;
-  const decision = new Promise<'commit' | 'rollback'>(
-    (resolve) => (release = resolve),
-  );
-  let signalInserted!: () => void;
-  const inserted = new Promise<void>((resolve) => (signalInserted = resolve));
-
-  const done = db.transaction().execute(async (trx) => {
-    await trx.insertInto('appointment').values(values).execute();
-    signalInserted();
-    if ((await decision) === 'rollback')
-      throw new Error('rolled back on purpose');
-  });
-  return {
-    inserted,
-    done,
-    commit: () => release('commit'),
-    rollback: () => release('rollback'),
-  };
-}
+import { holdInsert } from '../../support/transactions';
 
 function watch(promise: Promise<unknown>) {
   const state = { settled: false };

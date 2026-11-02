@@ -52,4 +52,11 @@ export class ProblemDetailsDto implements ProblemDetails {
 
   @ApiPropertyOptional({ type: [FieldErrorDto] })
   errors?: FieldErrorDto[];
+
+  @ApiPropertyOptional({
+    example: 'OUTSIDE_OPENING_HOURS',
+    description:
+      'BUSINESS_RULE_VIOLATED only: OFF_GRID, TOO_SOON, BEYOND_HORIZON, OUTSIDE_OPENING_HOURS or VEHICLE_NOT_OWNED',
+  })
+  rule?: string;
 }
