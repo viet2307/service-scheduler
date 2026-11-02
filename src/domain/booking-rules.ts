@@ -5,9 +5,7 @@ import {
   OpeningHours,
   openingIntervals,
 } from './calendar';
-import { contains, MINUTE } from './interval';
-
-const DAY = 24 * 60 * MINUTE;
+import { contains, DAY, MINUTE } from './interval';
 
 /** The settings the booking rules read. */
 export interface BookingRulesPolicy {

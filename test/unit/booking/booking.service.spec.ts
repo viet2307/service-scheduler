@@ -1,8 +1,9 @@
+import type { PinoLogger } from 'nestjs-pino';
 import { DatabaseError } from 'pg';
 import { AvailabilityService } from '@/availability/availability.service';
 import { AppointmentService } from '@/booking/appointment.service';
 import { BookingCommand, BookingService } from '@/booking/booking.service';
-import { ErrorCode } from '@/common/errors';
+import { AppError, ErrorCode } from '@/common/errors';
 import { Interval, Snapshot } from '@/domain';
 import { PgErrorCode } from '@/persistence/pg-errors';
 import {
@@ -13,6 +14,7 @@ import {
   VehicleRepository,
 } from '@/persistence/repositories';
 import { TransactionHost } from '@/persistence/transaction-host';
+import { SchedulerMetrics } from '@/telemetry/scheduler-metrics';
 import { FixedClock } from '../../support/clock';
 
 const utc = (iso: string) => Date.parse(iso);
@@ -80,9 +82,20 @@ function setup() {
       requiredBayType: 'LIFT',
     }),
   };
-  const customers = { getById: jest.fn().mockResolvedValue({ id: 'c1' }) };
+  const customers = {
+    getById: jest.fn().mockResolvedValue({
+      id: 'c1',
+      fullName: 'Ngoc Anh Le',
+      email: 'anh@example.com',
+      phone: '+84 90 000 0000',
+    }),
+  };
   const vehicles = {
-    getById: jest.fn().mockResolvedValue({ id: 'v1', customerId: 'c1' }),
+    getById: jest.fn().mockResolvedValue({
+      id: 'v1',
+      customerId: 'c1',
+      vin: 'WVWZZZ1KZAW000001',
+    }),
   };
   const availability = {
     loadSnapshot: jest.fn().mockResolvedValue(snapshot()),
@@ -93,6 +106,8 @@ function setup() {
   const transactions = {
     run: jest.fn((fn: () => Promise<unknown>) => fn()),
   };
+  const metrics = { bookingOutcome: jest.fn() };
+  const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
 
   const service = new BookingService(
     appointments as unknown as AppointmentRepository,
@@ -110,10 +125,20 @@ function setup() {
       horizonDays: 90,
       lockTimeoutMs: 2000,
     },
+    metrics as unknown as SchedulerMetrics,
+    logger as unknown as PinoLogger,
   );
   const book = (command: BookingCommand = COMMAND) =>
     service.book(command, KEY, FINGERPRINT);
-  return { book, appointments, availability, vehicles, transactions };
+  return {
+    book,
+    appointments,
+    availability,
+    vehicles,
+    transactions,
+    metrics,
+    logger,
+  };
 }
 
 describe('BookingService', () => {
@@ -296,5 +321,107 @@ describe('BookingService', () => {
       });
       expect(availability.loadSnapshot).not.toHaveBeenCalled();
     });
+  });
+
+  describe('decision log and outcome metric', () => {
+    it('logs one info record per booking, with IDs only', async () => {
+      const { book, logger } = setup();
+      await book();
+
+      expect(logger.info).toHaveBeenCalledTimes(1);
+      const [record, message] = logger.info.mock.calls[0];
+      expect(message).toBe('booking decision');
+      expect(record).toEqual({
+        dealership_id: 'd1',
+        service_type: 'OIL_SERVICE',
+        outcome: 'confirmed',
+        attempts: 1,
+        technician_id: 'generalist',
+        bay_id: 'b1',
+        duration_ms: expect.any(Number),
+      });
+      const logged = JSON.stringify(record);
+      for (const personal of [
+        'Ngoc Anh Le',
+        'anh@example.com',
+        '+84 90 000 0000',
+        'WVWZZZ1KZAW000001',
+      ])
+        expect(logged).not.toContain(personal);
+    });
+
+    it.each([
+      [
+        'a replay',
+        'info',
+        'replayed',
+        'OIL_SERVICE',
+        (s: ReturnType<typeof setup>) =>
+          s.appointments.findByIdempotencyKey.mockResolvedValue({
+            id: 'a0',
+            requestFingerprint: FINGERPRINT,
+          }),
+      ],
+      [
+        'a reused key',
+        'warn',
+        'key_reused',
+        'unknown',
+        (s: ReturnType<typeof setup>) =>
+          s.appointments.findByIdempotencyKey.mockResolvedValue({
+            id: 'a0',
+            requestFingerprint: 'another request',
+          }),
+      ],
+      [
+        'an unknown vehicle',
+        'warn',
+        'not_found',
+        'unknown',
+        (s: ReturnType<typeof setup>) =>
+          s.vehicles.getById.mockRejectedValue(
+            new AppError(ErrorCode.NOT_FOUND),
+          ),
+      ],
+      [
+        'a vehicle conflict',
+        'warn',
+        'vehicle_conflict',
+        'OIL_SERVICE',
+        (s: ReturnType<typeof setup>) =>
+          s.appointments.hasVehicleOverlap.mockResolvedValue(true),
+      ],
+      [
+        'a lock timeout',
+        'error',
+        'error',
+        'OIL_SERVICE',
+        (s: ReturnType<typeof setup>) =>
+          s.appointments.insertIfKeyIsNew.mockRejectedValue(
+            pgError(PgErrorCode.LOCK_NOT_AVAILABLE),
+          ),
+      ],
+    ])(
+      'records %s once, at %s, as %s',
+      async (_, level, outcome, serviceType, arrange) => {
+        const s = setup();
+        arrange(s);
+        await s.book().catch(() => undefined);
+
+        expect(s.metrics.bookingOutcome).toHaveBeenCalledTimes(1);
+        expect(s.metrics.bookingOutcome).toHaveBeenCalledWith(
+          outcome,
+          serviceType,
+        );
+        const logs = [s.logger.info, s.logger.warn, s.logger.error];
+        expect(logs.flatMap((log) => log.mock.calls)).toHaveLength(1);
+        expect(
+          s.logger[level as 'info' | 'warn' | 'error'],
+        ).toHaveBeenCalledWith(
+          expect.objectContaining({ outcome }),
+          'booking decision',
+        );
+      },
+    );
   });
 });

@@ -6,6 +6,9 @@ export interface Interval {
 
 export const MINUTE = 60_000;
 
+/** A fixed 24 hours, not a local calendar day: that lasts 23 or 25 hours on a DST change day (see `localDayWindow`). */
+export const DAY = 24 * 60 * MINUTE;
+
 /** Whether they share an instant; like PostgreSQL's `&&`, an empty interval overlaps nothing. */
 export const overlaps = (a: Interval, b: Interval): boolean =>
   Math.max(a.start, b.start) < Math.min(a.end, b.end);

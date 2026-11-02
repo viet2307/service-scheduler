@@ -3,6 +3,7 @@ import {
   bookableStartRange,
   BookingRequest,
   checkBookingRules,
+  DAY,
   findBookableStarts,
   gridPoints,
   localDayWindow,
@@ -12,7 +13,6 @@ import {
   RuleViolation,
 } from '@/domain';
 
-const DAY = 24 * 60 * MINUTE;
 const ZONE = 'Asia/Ho_Chi_Minh';
 const utc = (iso: string) => Date.parse(iso);
 const NOW = utc('2026-10-20T00:00:00Z');

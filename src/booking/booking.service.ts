@@ -1,4 +1,5 @@
 import { trace } from '@opentelemetry/api';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { AvailabilityService } from '@/availability/availability.service';
 import { type Clock, InjectClock } from '@/common/clock';
 import {
@@ -32,6 +33,10 @@ import {
   VehicleRepository,
 } from '@/persistence/repositories';
 import { TransactionHost } from '@/persistence/transaction-host';
+import {
+  type BookingOutcome,
+  SchedulerMetrics,
+} from '@/telemetry/scheduler-metrics';
 import { AppointmentService } from './appointment.service';
 
 /** A booking request, normalised so that spellings of the same request fingerprint alike. */
@@ -52,16 +57,6 @@ export interface BookingResult {
   /** True when the Idempotency-Key was already used with the same request. */
   readonly replayed: boolean;
 }
-
-export type BookingOutcome =
-  | 'confirmed'
-  | 'replayed'
-  | 'slot_unavailable'
-  | 'vehicle_conflict'
-  | 'rule_violated'
-  | 'not_found'
-  | 'key_reused'
-  | 'error';
 
 /** What one request decided, filled in as it goes, so failures report as much as successes. */
 interface BookingDecision {
@@ -89,6 +84,14 @@ const OUTCOME_BY_CODE: Partial<Record<ErrorCode, BookingOutcome>> = {
 
 const outcomeOf = (error: unknown): BookingOutcome =>
   (error instanceof AppError && OUTCOME_BY_CODE[error.code]) || 'error';
+
+/** Error is kept for 5xx, so alerts on error logs fire for faults; refusals are warnings. */
+const logLevelOf = (outcome: BookingOutcome) =>
+  outcome === 'error'
+    ? 'error'
+    : outcome === 'confirmed' || outcome === 'replayed'
+      ? 'info'
+      : 'warn';
 
 const describeSlot = (slot: Interval, zone: string) =>
   `${formatLocal(slot.start, zone)} to ${formatLocal(slot.end, zone)} on ${localDateOf(slot.start, zone)} (${zone})`;
@@ -143,6 +146,9 @@ export class BookingService {
     private readonly transactions: TransactionHost,
     @InjectClock() private readonly clock: Clock,
     @InjectBookingPolicy() private readonly policy: BookingPolicy,
+    private readonly metrics: SchedulerMetrics,
+    @InjectPinoLogger(BookingService.name)
+    private readonly logger: PinoLogger,
   ) {}
 
   @Span('booking.create')
@@ -151,6 +157,7 @@ export class BookingService {
     key: string,
     fingerprint: string,
   ): Promise<BookingResult> {
+    const startedAt = performance.now();
     const decision: BookingDecision = { outcome: 'error', attempts: 0 };
     try {
       return await this.#decide(command, key, fingerprint, decision);
@@ -163,6 +170,23 @@ export class BookingService {
         'service_type.code': decision.serviceTypeCode,
         'idempotency.replayed': decision.outcome === 'replayed',
       });
+      this.metrics.bookingOutcome(
+        decision.outcome,
+        decision.serviceTypeCode ?? 'unknown',
+      );
+      // One wide record explains the whole booking. IDs only, never names, VIN or contact details.
+      this.logger[logLevelOf(decision.outcome)](
+        {
+          dealership_id: command.dealershipId,
+          service_type: decision.serviceTypeCode,
+          outcome: decision.outcome,
+          attempts: decision.attempts,
+          technician_id: decision.technicianId,
+          bay_id: decision.bayId,
+          duration_ms: Math.round(performance.now() - startedAt),
+        },
+        'booking decision',
+      );
     }
   }
 
