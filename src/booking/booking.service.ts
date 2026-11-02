@@ -132,12 +132,6 @@ function ruleViolated(
   return new AppError(ErrorCode.BUSINESS_RULE_VIOLATED, detail, { rule });
 }
 
-const slotUnavailable = (slot: Interval, zone: string) =>
-  new AppError(
-    ErrorCode.SLOT_UNAVAILABLE,
-    `No qualified technician and compatible bay are both free from ${describeSlot(slot, zone)}`,
-  );
-
 const vehicleAlreadyBooked = (
   vehicleId: string,
   slot: Interval,
@@ -273,7 +267,8 @@ export class BookingService {
       // the error: the winner usually took both the technician and the bay. A loser
       // gets 23P01 only once the winner has committed, so the re-read already sees the winner.
       const pair = await this.findCandidates(dealership, serviceType, slot);
-      if (!pair) throw slotUnavailable(slot, zone);
+      if (!pair)
+        throw await this.slotUnavailable(dealership, serviceType, slot);
       Object.assign(decision, pair, { attempts: attempt });
 
       const result = await this.insertAttempt(
@@ -307,7 +302,7 @@ export class BookingService {
       }
     }
     // Every lost attempt means a different winner committed, so running out means the capacity is gone.
-    throw slotUnavailable(slot, zone);
+    throw await this.slotUnavailable(dealership, serviceType, slot);
   }
 
   @Span('booking.load_reference_data')
@@ -348,6 +343,33 @@ export class BookingService {
     return technician && bay
       ? { technicianId: technician.id, bayId: bay.id }
       : undefined;
+  }
+
+  /** The 409 with the next bookable starts, looked up after every transaction has ended. */
+  @Span('booking.find_alternatives')
+  private async slotUnavailable(
+    dealership: { id: string; timezone: string },
+    serviceType: {
+      requiredSkill: string;
+      requiredBayType: string;
+      durationMinutes: number;
+    },
+    slot: Interval,
+  ): Promise<AppError> {
+    const alternatives = await this.availability.findAlternatives(
+      dealership,
+      serviceType,
+      slot.start,
+    );
+    return new AppError(
+      ErrorCode.SLOT_UNAVAILABLE,
+      `No qualified technician and compatible bay are both free from ${describeSlot(slot, dealership.timezone)}`,
+      {
+        alternatives: alternatives.map((start) =>
+          new Date(start).toISOString(),
+        ),
+      },
+    );
   }
 
   @Span('booking.insert_attempt')

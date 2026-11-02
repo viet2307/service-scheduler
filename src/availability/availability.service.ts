@@ -8,7 +8,10 @@ import {
   bookableStartRange,
   findBookableStarts,
   Interval,
+  localDateOf,
   localDayWindow,
+  localDayWindows,
+  nextBookableStarts,
   openingIntervals,
   Snapshot,
 } from '@/domain';
@@ -124,5 +127,46 @@ export class AvailabilityService {
         freeBays: slot.freeBays,
       })),
     };
+  }
+
+  /**
+   * The alternatives of a 409: up to BOOKING_ALTERNATIVES bookable starts after `after`, searching at most
+   * BOOKING_ALTERNATIVES_SEARCH_DAYS local days from its own and never past the horizon.
+   * One snapshot covers every searched day, so the search costs the same queries as one day's.
+   */
+  async findAlternatives(
+    dealership: { id: string; timezone: string },
+    serviceType: {
+      requiredSkill: string;
+      requiredBayType: string;
+      durationMinutes: number;
+    },
+    after: number,
+  ): Promise<number[]> {
+    const zone = dealership.timezone;
+    const range = bookableStartRange(this.clock.now().getTime(), this.policy);
+    const days = localDayWindows(
+      localDateOf(after, zone),
+      zone,
+      this.policy.alternativesSearchDays,
+    ).filter((day) => day.start <= range.latestStart);
+    if (!this.policy.alternatives || !days.length) return [];
+
+    const snapshot = await this.loadSnapshot(dealership, serviceType, {
+      start: days[0].start,
+      end: days[days.length - 1].end,
+    });
+    return nextBookableStarts(
+      {
+        snapshot,
+        durationMinutes: serviceType.durationMinutes,
+        zone,
+        gridMinutes: this.policy.slotGridMinutes,
+        ...range,
+      },
+      days,
+      after,
+      this.policy.alternatives,
+    ).map((slot) => slot.start);
   }
 }

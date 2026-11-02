@@ -34,6 +34,15 @@ const COMMAND: BookingCommand = {
   startAt: new Date('2026-11-02T02:00:00Z'), // 09:00 local
 };
 
+/** What the availability fake suggests after a refusal: 10:00 and 10:15 local. */
+const ALTERNATIVES = [utc('2026-11-02T03:00:00Z'), utc('2026-11-02T03:15:00Z')];
+const SLOT_UNAVAILABLE = {
+  code: ErrorCode.SLOT_UNAVAILABLE,
+  extensions: {
+    alternatives: ['2026-11-02T03:00:00.000Z', '2026-11-02T03:15:00.000Z'],
+  },
+};
+
 const pgError = (code: string, constraint?: string) =>
   Object.assign(new DatabaseError('failed', 0, 'error'), { code, constraint });
 
@@ -131,6 +140,7 @@ function setup() {
   };
   const availability = {
     loadSnapshot: jest.fn().mockResolvedValue(snapshot()),
+    findAlternatives: jest.fn().mockResolvedValue(ALTERNATIVES),
   };
   const appointmentService = {
     get: jest.fn((id: string) => Promise.resolve(detailed(id))),
@@ -161,6 +171,8 @@ function setup() {
       horizonDays: 90,
       lockTimeoutMs: 2000,
       maxAttempts: 3,
+      alternatives: 3,
+      alternativesSearchDays: 7,
     },
     metrics as unknown as SchedulerMetrics,
     logger as unknown as PinoLogger,
@@ -350,9 +362,7 @@ describe('BookingService', () => {
         .mockResolvedValueOnce(snapshot())
         .mockResolvedValueOnce(snapshot(['generalist', 'specialist']));
 
-      await expect(book()).rejects.toMatchObject({
-        code: ErrorCode.SLOT_UNAVAILABLE,
-      });
+      await expect(book()).rejects.toMatchObject(SLOT_UNAVAILABLE);
       expect(appointments.insertIfKeyIsNew).toHaveBeenCalledTimes(1);
     });
 
@@ -360,13 +370,16 @@ describe('BookingService', () => {
       const { book, appointments, availability, metrics } = setup();
       appointments.insertIfKeyIsNew.mockRejectedValue(lostRace.bay());
 
-      await expect(book()).rejects.toMatchObject({
-        code: ErrorCode.SLOT_UNAVAILABLE,
-      });
+      await expect(book()).rejects.toMatchObject(SLOT_UNAVAILABLE);
       expect(appointments.insertIfKeyIsNew).toHaveBeenCalledTimes(3);
       expect(availability.loadSnapshot).toHaveBeenCalledTimes(3);
       expect(metrics.conflictRetry).toHaveBeenCalledTimes(3);
       expect(metrics.bookingAttempts).toHaveBeenCalledWith(3);
+      expect(availability.findAlternatives).toHaveBeenCalledWith(
+        expect.objectContaining({ timezone: 'Asia/Ho_Chi_Minh' }),
+        expect.objectContaining({ durationMinutes: 60 }),
+        COMMAND.startAt.getTime(),
+      );
     });
 
     it.each([
@@ -388,9 +401,7 @@ describe('BookingService', () => {
       const { book, appointments, availability } = setup();
       availability.loadSnapshot.mockResolvedValue(snapshot(['b1', 'b2']));
 
-      await expect(book()).rejects.toMatchObject({
-        code: ErrorCode.SLOT_UNAVAILABLE,
-      });
+      await expect(book()).rejects.toMatchObject(SLOT_UNAVAILABLE);
       expect(appointments.insertIfKeyIsNew).not.toHaveBeenCalled();
     });
 

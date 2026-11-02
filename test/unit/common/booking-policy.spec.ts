@@ -33,6 +33,8 @@ describe('CommonModule', () => {
       horizonDays: 14,
       lockTimeoutMs: 2000,
       maxAttempts: 3,
+      alternatives: 3,
+      alternativesSearchDays: 7,
     });
   });
 
