@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { Kysely, sql } from 'kysely';
+import { Insertable, Kysely, sql } from 'kysely';
 import { createDatabase } from '@/persistence/database';
 import type { DB } from '@/persistence/database.types';
 import { PgErrorCode } from '@/persistence/pg-errors';
@@ -145,6 +145,85 @@ describe('Booking queries', () => {
           window('09:00', '10:00'),
         ),
       ).toBe(false);
+    });
+  });
+
+  describe('cancel', () => {
+    const insert = (overrides: Partial<Insertable<DB['appointment']>> = {}) =>
+      db
+        .insertInto('appointment')
+        .values(appointment(overrides))
+        .returning('id')
+        .executeTakeFirstOrThrow();
+
+    it('cancels a confirmed appointment and returns it', async () => {
+      const { id } = await insert();
+
+      const row = await appointments.cancel(id);
+
+      expect(row).toMatchObject({
+        id,
+        status: 'CANCELLED',
+        cancelledAt: expect.any(Date),
+      });
+      expect(row!.updatedAt).toEqual(row!.cancelledAt);
+    });
+
+    it('frees the technician, bay and vehicle for a new booking at once', async () => {
+      const { id } = await insert();
+      await appointments.cancel(id);
+
+      await expect(
+        appointments.insertIfKeyIsNew(appointment()),
+      ).resolves.toBeDefined();
+    });
+
+    it.each([
+      ['completed', { status: 'COMPLETED' }],
+      ['no-show', { status: 'NO_SHOW' }],
+      ['cancelled', { status: 'CANCELLED', cancelledAt: at('08:00') }],
+    ])(
+      'returns undefined and leaves a %s appointment unchanged',
+      async (_, state) => {
+        const { id } = await insert(state);
+        const before = await appointments.findById(id);
+
+        expect(await appointments.cancel(id)).toBeUndefined();
+        expect(await appointments.findById(id)).toEqual(before);
+      },
+    );
+
+    it('returns undefined for an unknown id', async () => {
+      expect(
+        await appointments.cancel('01a16194-0000-7000-8000-0000000000ff'),
+      ).toBeUndefined();
+    });
+
+    it('lets only the first of two concurrent cancels change the row', async () => {
+      const { id } = await insert();
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => (release = resolve));
+      let signalCancelled!: () => void;
+      const cancelled = new Promise<void>(
+        (resolve) => (signalCancelled = resolve),
+      );
+      const first = host.run(async () => {
+        const row = await appointments.cancel(id);
+        signalCancelled();
+        await released;
+        return row;
+      });
+      await cancelled;
+
+      // Waits for the first transaction's row lock, then re-checks the status of the committed row.
+      const second = appointments.cancel(id);
+      const state = watch(second);
+      await sleep(200);
+      expect(state.settled).toBe(false);
+
+      release();
+      expect(await first).toMatchObject({ status: 'CANCELLED' });
+      await expect(second).resolves.toBeUndefined();
     });
   });
 

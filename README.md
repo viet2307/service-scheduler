@@ -38,6 +38,7 @@ Swagger UI is served at http://localhost:3000/docs (JSON at `/docs/openapi.json`
 | `GET /v1/dealerships/{id}/availability?serviceTypeId=&date=YYYY-MM-DD` | Bookable start times on one local day, with how many technicians and bays are still free |
 | `POST /v1/appointments`                                                | Book: assigns a qualified technician and a compatible bay. Requires `Idempotency-Key`    |
 | `GET /v1/appointments/{id}`                                            | One appointment, including a cancelled one                                               |
+| `POST /v1/appointments/{id}/cancel`                                    | Cancel: frees its technician, bay and vehicle at once. Repeating it answers 200 again    |
 | `GET /health/live`                                                     | Liveness                                                                                 |
 | `GET /health/ready`                                                    | Readiness: database reachable and every migration applied                                |
 

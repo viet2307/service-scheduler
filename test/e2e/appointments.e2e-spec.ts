@@ -7,6 +7,8 @@ import { expectMatchesOpenApi } from './support/openapi';
 
 const CONFIRMED_ID = '01a16194-0000-7000-8000-0000000000d1';
 const CANCELLED_ID = '01a16194-0000-7000-8000-0000000000d2';
+const COMPLETED_ID = '01a16194-0000-7000-8000-0000000000d3';
+const NO_SHOW_ID = '01a16194-0000-7000-8000-0000000000d4';
 const UNKNOWN_ID = '01a16194-0000-7000-8000-0000000000ff';
 
 /** A fourth technician, so a slot can have a free technician but no free bay. */
@@ -47,6 +49,19 @@ describe('Appointments (e2e)', () => {
           endAt: at('12:00'),
           status: 'CANCELLED',
           cancelledAt: at('08:00'),
+        }),
+        // Past jobs on Monday 19 October, the day before NOW.
+        appointment({
+          id: COMPLETED_ID,
+          status: 'COMPLETED',
+          startAt: utc('2026-10-19T02:00:00Z'),
+          endAt: utc('2026-10-19T03:00:00Z'),
+        }),
+        appointment({
+          id: NO_SHOW_ID,
+          status: 'NO_SHOW',
+          startAt: utc('2026-10-19T03:00:00Z'),
+          endAt: utc('2026-10-19T04:00:00Z'),
         }),
       ])
       .execute();
@@ -126,23 +141,19 @@ describe('Appointments (e2e)', () => {
 
   afterAll(() => t.app.close());
 
+  const body = (overrides: Record<string, string> = {}) => ({
+    dealershipId: scenario.dealershipId,
+    customerId: scenario.customerId,
+    vehicleId: v1,
+    serviceTypeId: scenario.serviceTypeId,
+    startAt: '2026-11-03T09:00:00+07:00',
+    ...overrides,
+  });
+
+  const book = (payload: object, key: string = randomUUID()) =>
+    t.http().post('/v1/appointments').set('Idempotency-Key', key).send(payload);
+
   describe('POST /v1/appointments', () => {
-    const body = (overrides: Record<string, string> = {}) => ({
-      dealershipId: scenario.dealershipId,
-      customerId: scenario.customerId,
-      vehicleId: v1,
-      serviceTypeId: scenario.serviceTypeId,
-      startAt: '2026-11-03T09:00:00+07:00',
-      ...overrides,
-    });
-
-    const book = (payload: object, key: string = randomUUID()) =>
-      t
-        .http()
-        .post('/v1/appointments')
-        .set('Idempotency-Key', key)
-        .send(payload);
-
     it('books the best technician and bay, and points Location at the appointment', async () => {
       const res = await book(body()).expect(201);
 
@@ -474,6 +485,87 @@ describe('Appointments (e2e)', () => {
       const res = await t.http().get('/v1/appointments/not-a-uuid').expect(400);
 
       expectMatchesOpenApi(res, 'Appointments_get');
+      expect(res.body.code).toBe('VALIDATION_FAILED');
+    });
+  });
+
+  describe('POST /v1/appointments/:id/cancel', () => {
+    const cancel = (id: string) =>
+      t.http().post(`/v1/appointments/${id}/cancel`);
+    const read = async (id: string) =>
+      (await t.http().get(`/v1/appointments/${id}`).expect(200)).body;
+
+    it('cancels a confirmed appointment and frees its vehicle, technician and bay at once', async () => {
+      const payload = body({ startAt: '2026-11-06T11:00:00+07:00' });
+      const booked = await book(payload).expect(201);
+
+      const res = await cancel(booked.body.id).expect(200);
+
+      expectMatchesOpenApi(res, 'Appointments_cancel');
+      expect(res.body).toEqual({
+        ...booked.body,
+        status: 'CANCELLED',
+        cancelledAt: expect.any(String),
+      });
+      expect(await read(booked.body.id)).toEqual(res.body);
+
+      // The ranking picks the same pair again only if both are free.
+      const rebooked = await book(payload).expect(201);
+      expect(rebooked.body).toMatchObject({
+        vehicle: booked.body.vehicle,
+        technician: booked.body.technician,
+        bay: booked.body.bay,
+        startAt: booked.body.startAt,
+      });
+    });
+
+    it('returns an appointment that is already cancelled unchanged', async () => {
+      const res = await cancel(CANCELLED_ID).expect(200);
+
+      expectMatchesOpenApi(res, 'Appointments_cancel');
+      expect(res.body).toEqual(await read(CANCELLED_ID));
+      expect(res.body).toMatchObject({
+        status: 'CANCELLED',
+        cancelledAt: '2026-11-02T08:00:00.000Z',
+      });
+    });
+
+    it.each([
+      ['a completed', COMPLETED_ID, 'COMPLETED'],
+      ['a no-show', NO_SHOW_ID, 'NO_SHOW'],
+    ])(
+      'answers 409 for %s appointment and leaves it unchanged',
+      async (_, id, appointmentStatus) => {
+        const res = await cancel(id).expect(409);
+
+        expectMatchesOpenApi(res, 'Appointments_cancel');
+        expect(res.body).toMatchObject({
+          status: 409,
+          code: 'INVALID_STATE',
+          detail: `appointment ${id} is ${appointmentStatus} and cannot be cancelled`,
+          appointmentStatus,
+        });
+        expect(await read(id)).toMatchObject({
+          status: appointmentStatus,
+          cancelledAt: null,
+        });
+      },
+    );
+
+    it('answers 404 for an unknown appointment', async () => {
+      const res = await cancel(UNKNOWN_ID).expect(404);
+
+      expectMatchesOpenApi(res, 'Appointments_cancel');
+      expect(res.body).toMatchObject({
+        code: 'NOT_FOUND',
+        detail: `appointment ${UNKNOWN_ID} was not found`,
+      });
+    });
+
+    it('answers 400 for a malformed id', async () => {
+      const res = await cancel('not-a-uuid').expect(400);
+
+      expectMatchesOpenApi(res, 'Appointments_cancel');
       expect(res.body.code).toBe('VALIDATION_FAILED');
     });
   });
