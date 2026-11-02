@@ -39,6 +39,29 @@ export class AppointmentRepository extends BaseRepository<'appointment'> {
   }
 
   /**
+   * Refused: a plain insert would skip the idempotency key, the advisory locks and the retry.
+   * The `never` parameter turns a call into a compile error; the rejection covers callers that get
+   * around the types.
+   */
+  override insert(_values: never): Promise<never> {
+    return Promise.reject(
+      new Error('Appointments are inserted only through insertIfKeyIsNew'),
+    );
+  }
+
+  /**
+   * Refused: a plain update would skip the status check of a compare-and-set such as `cancel`, so it
+   * could cancel a completed job or overwrite a status that changed in between.
+   */
+  override updateById(_id: string, _values: never): Promise<never> {
+    return Promise.reject(
+      new Error(
+        'Appointments change only through compare-and-set methods such as cancel',
+      ),
+    );
+  }
+
+  /**
    * Queues bookings that share a technician, bay or vehicle until the transaction ends.
    * Without it, inserts that arrive together can each write their index entry and then wait for each
    * other until PostgreSQL aborts one with 40P01. Keys are taken in sorted order, so two bookings never
