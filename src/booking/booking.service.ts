@@ -22,8 +22,9 @@ import {
 } from '@/domain';
 import {
   classifyOverlap,
-  OverlapViolation,
+  type OverlapResource,
 } from '@/persistence/overlap-constraints';
+import { isPgError, PgErrorCode } from '@/persistence/pg-errors';
 import {
   AppointmentRepository,
   CustomerRepository,
@@ -70,7 +71,28 @@ interface BookingDecision {
 type InsertAttempt =
   | { result: 'confirmed'; id: string }
   | { result: 'key_taken' }
-  | { result: 'conflict'; violation: OverlapViolation };
+  | { result: 'vehicle_taken' }
+  /** Another request took the technician or bay a moment ago; another pair may still be free. */
+  | { result: 'lost_race'; resource: OverlapResource | 'deadlock' };
+
+/** Undefined for anything that is not a booking conflict: it propagates (503 if transient, else 500). */
+function classifyInsertFailure(error: unknown): InsertAttempt | undefined {
+  // Inserts that arrive together can deadlock on the constraint indexes. The advisory locks make
+  // this rare, and when it happens it is the same lost race.
+  if (isPgError(error, PgErrorCode.DEADLOCK_DETECTED))
+    return { result: 'lost_race', resource: 'deadlock' };
+  const violation = classifyOverlap(error);
+  if (violation?.onBookingConflict === 'retry')
+    return { result: 'lost_race', resource: violation.resource };
+  if (violation?.resource === 'vehicle') return { result: 'vehicle_taken' };
+  return undefined;
+}
+
+/** Refusals a request with the same key, committed in the meantime, must turn into a replay. */
+const CONFLICT_CODES = new Set([
+  ErrorCode.SLOT_UNAVAILABLE,
+  ErrorCode.VEHICLE_ALREADY_BOOKED,
+]);
 
 export const VEHICLE_NOT_OWNED = 'VEHICLE_NOT_OWNED';
 
@@ -85,13 +107,12 @@ const OUTCOME_BY_CODE: Partial<Record<ErrorCode, BookingOutcome>> = {
 const outcomeOf = (error: unknown): BookingOutcome =>
   (error instanceof AppError && OUTCOME_BY_CODE[error.code]) || 'error';
 
-/** Error is kept for 5xx, so alerts on error logs fire for faults; refusals are warnings. */
-const logLevelOf = (outcome: BookingOutcome) =>
-  outcome === 'error'
-    ? 'error'
-    : outcome === 'confirmed' || outcome === 'replayed'
-      ? 'info'
-      : 'warn';
+/** Error is kept for 5xx, so alerts on error logs fire for faults; retries and refusals are warnings. */
+const logLevelOf = ({ outcome, attempts }: BookingDecision) => {
+  if (outcome === 'error') return 'error';
+  const decided = outcome === 'confirmed' || outcome === 'replayed';
+  return decided && attempts <= 1 ? 'info' : 'warn';
+};
 
 const describeSlot = (slot: Interval, zone: string) =>
   `${formatLocal(slot.start, zone)} to ${formatLocal(slot.end, zone)} on ${localDateOf(slot.start, zone)} (${zone})`;
@@ -110,12 +131,6 @@ function ruleViolated(
   }[rule];
   return new AppError(ErrorCode.BUSINESS_RULE_VIOLATED, detail, { rule });
 }
-
-const slotUnavailable = (slot: Interval, zone: string) =>
-  new AppError(
-    ErrorCode.SLOT_UNAVAILABLE,
-    `No qualified technician and compatible bay are both free from ${describeSlot(slot, zone)}`,
-  );
 
 const vehicleAlreadyBooked = (
   vehicleId: string,
@@ -174,8 +189,10 @@ export class BookingService {
         decision.outcome,
         decision.serviceTypeCode ?? 'unknown',
       );
+      if (decision.attempts > 0)
+        this.metrics.bookingAttempts(decision.attempts);
       // One wide record explains the whole booking. IDs only, never names, VIN or contact details.
-      this.logger[logLevelOf(decision.outcome)](
+      this.logger[logLevelOf(decision)](
         {
           dealership_id: command.dealershipId,
           service_type: decision.serviceTypeCode,
@@ -190,7 +207,7 @@ export class BookingService {
     }
   }
 
-  // An ES private method, so @ServiceInjectable does not wrap it in a span of its own.
+  // ES private methods, so @ServiceInjectable does not wrap them in spans of their own.
   async #decide(
     command: BookingCommand,
     key: string,
@@ -199,7 +216,25 @@ export class BookingService {
   ): Promise<BookingResult> {
     const existing = await this.appointments.findByIdempotencyKey(key);
     if (existing) return this.replay(existing, fingerprint, decision);
+    try {
+      return await this.#bookNew(command, key, fingerprint, decision);
+    } catch (error) {
+      // A request with the same key can commit after the lookup above. Its twin may then see the
+      // vehicle or the last pair as taken, and must replay instead of answering 409.
+      if (error instanceof AppError && CONFLICT_CODES.has(error.code)) {
+        const committed = await this.appointments.findByIdempotencyKey(key);
+        if (committed) return this.replay(committed, fingerprint, decision);
+      }
+      throw error;
+    }
+  }
 
+  async #bookNew(
+    command: BookingCommand,
+    key: string,
+    fingerprint: string,
+    decision: BookingDecision,
+  ): Promise<BookingResult> {
     const { dealership, serviceType, vehicle, openingHours } =
       await this.loadReferenceData(command);
     decision.serviceTypeCode = serviceType.code;
@@ -227,48 +262,47 @@ export class BookingService {
     if (await this.appointments.hasVehicleOverlap(vehicle.id, toWindow(slot)))
       throw vehicleAlreadyBooked(vehicle.id, slot, zone);
 
-    const pair = await this.findCandidates(dealership, serviceType, slot);
-    if (!pair) throw slotUnavailable(slot, zone);
-    Object.assign(decision, pair);
+    for (let attempt = 1; attempt <= this.policy.maxAttempts; attempt++) {
+      // After a lost race this re-reads the snapshot instead of dropping only the resource named in
+      // the error: the winner usually took both the technician and the bay. A loser
+      // gets 23P01 only once the winner has committed, so the re-read already sees the winner.
+      const pair = await this.findCandidates(dealership, serviceType, slot);
+      if (!pair)
+        throw await this.slotUnavailable(dealership, serviceType, slot);
+      Object.assign(decision, pair, { attempts: attempt });
 
-    decision.attempts = 1;
-    const attempt = await this.insertAttempt(
-      {
-        dealershipId: command.dealershipId,
-        customerId: command.customerId,
-        vehicleId: command.vehicleId,
-        serviceTypeId: command.serviceTypeId,
-        ...pair,
-        startAt: new Date(slot.start),
-        endAt: new Date(slot.end),
-        idempotencyKey: key,
-        requestFingerprint: fingerprint,
-      },
-      decision.attempts,
-    );
-    switch (attempt.result) {
-      case 'confirmed':
-        decision.outcome = 'confirmed';
-        return {
-          appointment: await this.appointmentService.get(attempt.id),
-          replayed: false,
-        };
-      case 'key_taken':
-        return this.replayCommitted(key, fingerprint, decision);
-      case 'conflict':
-        // Another request took the technician or bay a moment ago.
-        if (attempt.violation.onBookingConflict === 'retry')
-          throw slotUnavailable(slot, zone);
-        // Two requests with the same key can fail on the vehicle constraint before the key.
-        if (attempt.violation.resource === 'vehicle') {
-          const committed = await this.appointments.findByIdempotencyKey(key);
-          if (committed) return this.replay(committed, fingerprint, decision);
+      const result = await this.insertAttempt(
+        {
+          dealershipId: command.dealershipId,
+          customerId: command.customerId,
+          vehicleId: command.vehicleId,
+          serviceTypeId: command.serviceTypeId,
+          ...pair,
+          startAt: new Date(slot.start),
+          endAt: new Date(slot.end),
+          idempotencyKey: key,
+          requestFingerprint: fingerprint,
+        },
+        attempt,
+      );
+      switch (result.result) {
+        case 'confirmed':
+          decision.outcome = 'confirmed';
+          return {
+            appointment: await this.appointmentService.get(result.id),
+            replayed: false,
+          };
+        case 'key_taken':
+          return this.replayCommitted(key, fingerprint, decision);
+        case 'vehicle_taken':
           throw vehicleAlreadyBooked(vehicle.id, slot, zone);
-        }
-        throw new Error(
-          `Unexpected overlap on ${attempt.violation.constraint} while booking`,
-        );
+        case 'lost_race':
+          this.metrics.conflictRetry(result.resource);
+          continue;
+      }
     }
+    // Every lost attempt means a different winner committed, so running out means the capacity is gone.
+    throw await this.slotUnavailable(dealership, serviceType, slot);
   }
 
   @Span('booking.load_reference_data')
@@ -311,6 +345,33 @@ export class BookingService {
       : undefined;
   }
 
+  /** The 409 with the next bookable starts, looked up after every transaction has ended. */
+  @Span('booking.find_alternatives')
+  private async slotUnavailable(
+    dealership: { id: string; timezone: string },
+    serviceType: {
+      requiredSkill: string;
+      requiredBayType: string;
+      durationMinutes: number;
+    },
+    slot: Interval,
+  ): Promise<AppError> {
+    const alternatives = await this.availability.findAlternatives(
+      dealership,
+      serviceType,
+      slot.start,
+    );
+    return new AppError(
+      ErrorCode.SLOT_UNAVAILABLE,
+      `No qualified technician and compatible bay are both free from ${describeSlot(slot, dealership.timezone)}`,
+      {
+        alternatives: alternatives.map((start) =>
+          new Date(start).toISOString(),
+        ),
+      },
+    );
+  }
+
   @Span('booking.insert_attempt')
   private async insertAttempt(
     values: NewAppointment,
@@ -319,9 +380,12 @@ export class BookingService {
     const span = trace.getActiveSpan();
     span?.setAttribute('attempt', attempt);
     try {
-      // The transaction holds only the INSERT: no reads and no network calls (AGENTS.md rule 3).
+      // The transaction holds only the advisory locks and the INSERT: no reads, no network calls (AGENTS.md rule 3).
       const row = await this.transactions.run(
-        () => this.appointments.insertIfKeyIsNew(values),
+        async () => {
+          await this.appointments.lockForBooking(values);
+          return this.appointments.insertIfKeyIsNew(values);
+        },
         { lockTimeoutMs: this.policy.lockTimeoutMs },
       );
       span?.setAttribute('result', row ? 'confirmed' : 'key_taken');
@@ -329,10 +393,15 @@ export class BookingService {
         ? { result: 'confirmed', id: row.id }
         : { result: 'key_taken' };
     } catch (error) {
-      const violation = classifyOverlap(error);
-      if (!violation) throw error;
-      span?.setAttribute('result', `conflict:${violation.resource}`);
-      return { result: 'conflict', violation };
+      const failure = classifyInsertFailure(error);
+      if (!failure) throw error;
+      span?.setAttribute(
+        'result',
+        failure.result === 'lost_race'
+          ? `conflict:${failure.resource}`
+          : 'conflict:vehicle',
+      );
+      return failure;
     }
   }
 

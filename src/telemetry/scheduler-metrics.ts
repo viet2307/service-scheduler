@@ -35,6 +35,21 @@ export class SchedulerMetrics {
     },
   );
 
+  private readonly conflictRetryCounter: Counter = this.meter.createCounter(
+    'scheduler.booking.conflict_retry',
+    {
+      description: 'Booking insert attempts lost to a concurrent booking',
+      unit: '{attempt}',
+    },
+  );
+
+  private readonly bookingAttemptsHistogram: Histogram =
+    this.meter.createHistogram('scheduler.booking.attempts', {
+      description: 'Insert attempts per booking that reached the insert',
+      unit: '{attempt}',
+      advice: { explicitBucketBoundaries: [1, 2, 3, 5, 10] },
+    });
+
   /** A zero is demand the dealership cannot serve. */
   slotsReturned(count: number, serviceTypeCode: string): void {
     this.slotsReturnedHistogram.record(count, {
@@ -48,5 +63,17 @@ export class SchedulerMetrics {
       outcome,
       service_type: serviceTypeCode,
     });
+  }
+
+  /**
+   * `resource` is technician, bay, or deadlock (a 40P01 names none). If it climbs, requests keep
+   * ranking the same pair first, and a random tie-break among the top candidates would spread them out.
+   */
+  conflictRetry(resource: string): void {
+    this.conflictRetryCounter.add(1, { resource });
+  }
+
+  bookingAttempts(attempts: number): void {
+    this.bookingAttemptsHistogram.record(attempts);
   }
 }

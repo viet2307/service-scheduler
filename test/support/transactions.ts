@@ -26,3 +26,13 @@ export function holdInsert(
     rollback: () => release('rollback'),
   };
 }
+
+/** Tracks whether a promise has settled, to assert that a statement is still waiting for a lock. */
+export function watch(promise: Promise<unknown>) {
+  const state = { settled: false };
+  promise.then(
+    () => (state.settled = true),
+    () => (state.settled = true),
+  );
+  return state;
+}

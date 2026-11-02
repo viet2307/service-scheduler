@@ -8,7 +8,9 @@ import {
   intersect,
   Interval,
   localDayWindow,
+  localDayWindows,
   MINUTE,
+  nextBookableStarts,
   normalize,
   overlaps,
   Snapshot,
@@ -243,6 +245,77 @@ describe('slot finder', () => {
           }
         }),
       );
+    });
+  });
+
+  describe('nextBookableStarts', () => {
+    const DAYS = localDayWindows('2026-11-02', ZONE, 3);
+    const on = (date: string, time: string) =>
+      Date.parse(`${date}T${time}:00Z`);
+    const daily = (from: string, to: string) =>
+      ['2026-11-02', '2026-11-03', '2026-11-04'].map((date) => ({
+        start: on(date, from),
+        end: on(date, to),
+      }));
+    const label = (instant: number) =>
+      new Date(instant).toISOString().slice(5, 16).replace('T', ' ');
+
+    const next = (
+      after: number,
+      snapshot: Partial<Snapshot> = {},
+      overrides: Partial<SlotSearch> = {},
+      limit = 3,
+    ) => {
+      const { window: _, ...rest } = search(
+        {
+          opening: daily('08:00', '17:30'),
+          technicians: [technician('t1', { shifts: daily('08:00', '17:30') })],
+          ...snapshot,
+        },
+        { latestStart: DAYS[2].end, ...overrides },
+      );
+      return nextBookableStarts(rest, DAYS, after, limit).map((slot) =>
+        label(slot.start),
+      );
+    };
+
+    it('returns the next starts strictly after the requested one, in order', () => {
+      expect(
+        next(at('09:00'), { bays: [bay('b1', [iv('09:00', '11:00')])] }),
+      ).toEqual(['11-02 11:00', '11-02 11:15', '11-02 11:30']);
+    });
+
+    it('continues on the following days, skipping one with nothing free', () => {
+      const closedOnTuesday = daily('08:00', '17:30').filter((_, i) => i !== 1);
+      expect(next(at('16:15'), { opening: closedOnTuesday })).toEqual([
+        '11-02 16:30',
+        '11-04 08:00',
+        '11-04 08:15',
+      ]);
+    });
+
+    it('stops at the latest bookable start', () => {
+      expect(
+        next(at('16:30'), {}, { latestStart: on('2026-11-03', '08:15') }),
+      ).toEqual(['11-03 08:00', '11-03 08:15']);
+    });
+
+    it('clips opening hours to each day, so no alternative runs past midnight', () => {
+      const aroundTheClock = [{ start: DAYS[0].start, end: DAYS[2].end }];
+      expect(
+        next(
+          at('21:30'),
+          {
+            opening: aroundTheClock,
+            technicians: [technician('t1', { shifts: aroundTheClock })],
+          },
+          { durationMinutes: 120 },
+        ),
+      ).toEqual(['11-02 21:45', '11-02 22:00', '11-03 00:00']);
+    });
+
+    it('returns nothing when no alternatives are wanted', () => {
+      expect(next(at('09:00'), {}, {}, 0)).toEqual([]);
     });
   });
 });

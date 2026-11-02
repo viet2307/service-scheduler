@@ -16,6 +16,19 @@ export function localDayWindow(date: string, zone: string): Interval {
   return { start: day.toMillis(), end: day.plus({ days: 1 }).toMillis() };
 }
 
+/** `count` consecutive local days from `date`, each as `localDayWindow` gives it. */
+export function localDayWindows(
+  date: string,
+  zone: string,
+  count: number,
+): Interval[] {
+  const first = DateTime.fromMillis(localDayWindow(date, zone).start, { zone });
+  return Array.from({ length: count }, (_, i) => {
+    const day = first.plus({ days: i });
+    return { start: day.toMillis(), end: day.plus({ days: 1 }).toMillis() };
+  });
+}
+
 /** The local days that overlap `window`, each at its local midnight. */
 function* localDays(window: Interval, zone: string): Generator<DateTime> {
   const first = DateTime.fromMillis(window.start, { zone }).startOf('day');

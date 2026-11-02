@@ -16,12 +16,15 @@ export interface AppOptions {
   controllers?: Type<unknown>[];
   /** Defaults to the system clock. */
   clock?: Clock;
+  /** Connections in the app's pool; defaults to createDatabase's. */
+  poolMax?: number;
 }
 
 export async function createApp({
   databaseUrl,
   controllers = [],
   clock,
+  poolMax,
 }: AppOptions = {}): Promise<NestExpressApplication> {
   const builder = Test.createTestingModule({
     imports: [AppModule],
@@ -30,7 +33,7 @@ export async function createApp({
   if (databaseUrl) {
     builder
       .overrideProvider(KYSELY)
-      .useValue(createDatabase({ connectionString: databaseUrl }));
+      .useValue(createDatabase({ connectionString: databaseUrl, poolMax }));
   }
   if (clock) builder.overrideProvider(CLOCK).useValue(clock);
   const moduleRef = await builder.compile();
@@ -50,7 +53,7 @@ export interface TestApp {
 
 /** Jest runs e2e files in parallel workers, so each suite gets its own migrated database. */
 export async function createTestApp(
-  options: Pick<AppOptions, 'clock'> = {},
+  options: Pick<AppOptions, 'clock' | 'poolMax'> = {},
 ): Promise<TestApp> {
   const app = await createApp({
     ...options,

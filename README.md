@@ -137,6 +137,7 @@ src/
   domain/            pure business rules (no framework imports; enforced by ESLint)
 migrations/          timestamp-prefixed SQL migrations
 seeds/               demo data (not migrations)
+scripts/sql/         operational queries, e.g. the hourly overlap reconciliation
 requests.http        example requests against the demo data
 test/
   unit/              no I/O

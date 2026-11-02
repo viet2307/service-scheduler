@@ -107,6 +107,24 @@ export class Env {
   @Min(100)
   @Max(10_000)
   BOOKING_LOCK_TIMEOUT_MS = 2000;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  BOOKING_MAX_ATTEMPTS = 3;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(10)
+  BOOKING_ALTERNATIVES = 3;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  BOOKING_ALTERNATIVES_SEARCH_DAYS = 7;
 }
 
 export function validateEnv(raw: Record<string, unknown>): Env {

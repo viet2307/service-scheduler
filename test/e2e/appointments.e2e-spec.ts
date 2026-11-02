@@ -329,7 +329,28 @@ describe('Appointments (e2e)', () => {
         code: 'SLOT_UNAVAILABLE',
         detail:
           'No qualified technician and compatible bay are both free from 10:00 to 11:00 on 2026-11-05 (Asia/Ho_Chi_Minh)',
+        // The bays free up at 11:00 local.
+        alternatives: [
+          '2026-11-05T04:00:00.000Z',
+          '2026-11-05T04:15:00.000Z',
+          '2026-11-05T04:30:00.000Z',
+        ],
       });
+    });
+
+    it('never suggests an alternative past the booking horizon', async () => {
+      clock.set(utc('2026-08-07T04:15:00Z')); // the horizon is 11:15 local on 5 November
+      const res = await book(
+        body({
+          vehicleId: SPARE_VEHICLE_ID,
+          startAt: '2026-11-05T10:00:00+07:00',
+        }),
+      ).expect(409);
+
+      expect(res.body.alternatives).toEqual([
+        '2026-11-05T04:00:00.000Z',
+        '2026-11-05T04:15:00.000Z',
+      ]);
     });
 
     it('answers 409 when a bay is free but no technician works', async () => {
@@ -340,7 +361,11 @@ describe('Appointments (e2e)', () => {
         }),
       ).expect(409);
 
-      expect(res.body.code).toBe('SLOT_UNAVAILABLE');
+      // Nobody works again within the 7 days searched.
+      expect(res.body).toMatchObject({
+        code: 'SLOT_UNAVAILABLE',
+        alternatives: [],
+      });
     });
 
     it('answers 409 when the vehicle already has an overlapping appointment', async () => {

@@ -18,6 +18,8 @@ Rules for anyone changing this repository, including AI coding agents.
 - Controllers map results to response DTOs with `this.toDto` / `this.toPage`; services return plain data.
 - Independent queries run with `Promise.all`; sequential `await` only when one result feeds the next.
 - Errors are RFC 9457 `application/problem+json` with a stable `code`. Never leak raw database messages.
+- Constraint names are read only through `classifyOverlap` (`src/persistence/overlap-constraints.ts`), never compared as strings elsewhere.
+- After a lost race, the booking retry re-reads the free technicians and bays. It never drops only the resource named in the error: the winner usually took both.
 - Never log personal data (customer name, email, phone, VIN). Log IDs only.
 - Comment only what the code cannot say itself: the reason, not the mechanics.
 

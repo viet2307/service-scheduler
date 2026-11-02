@@ -38,6 +38,36 @@ export class AppointmentRepository extends BaseRepository<'appointment'> {
       .executeTakeFirst();
   }
 
+  /**
+   * Queues bookings that share a technician, bay or vehicle until the transaction ends.
+   * Without it, inserts that arrive together can each write their index entry and then wait for each
+   * other until PostgreSQL aborts one with 40P01. Keys are taken in sorted order, so two bookings never
+   * hold one lock each while waiting for the other's. The constraints stay the guarantee; this only orders writers.
+   */
+  async lockForBooking({
+    technicianId,
+    bayId,
+    vehicleId,
+  }: Pick<NewAppointment, 'technicianId' | 'bayId' | 'vehicleId'>) {
+    // Outside a transaction the lock would be released as soon as the statement ends.
+    if (!this.transactionHost.isActive)
+      throw new Error('lockForBooking must run inside the booking transaction');
+    const resources = [
+      `technician:${technicianId}`,
+      `bay:${bayId}`,
+      `vehicle:${vehicleId}`,
+    ];
+    // The subquery sorts before the outer query locks (see the PostgreSQL docs on advisory locks and LIMIT).
+    await sql`
+      select pg_advisory_xact_lock(key)
+      from (
+        select hashtextextended(resource, 0) as key
+        from unnest(${resources}::text[]) as resource
+        order by key
+      ) as ordered
+    `.execute(this.db);
+  }
+
   /** Repeats appointment_no_vehicle_overlap's range and status predicates, so its GiST index serves the check. */
   async hasVehicleOverlap(vehicleId: string, window: TimeWindow) {
     const row = await this.db

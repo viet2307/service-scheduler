@@ -59,4 +59,13 @@ export class ProblemDetailsDto implements ProblemDetails {
       'BUSINESS_RULE_VIOLATED only: OFF_GRID, TOO_SOON, BEYOND_HORIZON, OUTSIDE_OPENING_HOURS or VEHICLE_NOT_OWNED',
   })
   rule?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    format: 'date-time',
+    example: ['2026-11-02T03:30:00.000Z', '2026-11-02T03:45:00.000Z'],
+    description:
+      'SLOT_UNAVAILABLE only: the next bookable start times after the requested one, in UTC. At most 3 by default, searched up to 7 local days ahead and never past the booking horizon; may be empty.',
+  })
+  alternatives?: string[];
 }

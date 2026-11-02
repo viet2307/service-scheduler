@@ -90,3 +90,31 @@ export function findBookableStarts(search: SlotSearch): BookableStart[] {
         : [];
     });
 }
+
+/**
+ * Up to `limit` bookable starts strictly after `after`, walking `days` (local day windows) in order:
+ * the alternatives of a 409. Each day is searched like an availability request, with the
+ * opening hours clipped to that day, so an alternative is never a slot the booking rules reject,
+ * e.g. one that runs past local midnight at a dealership open around the clock.
+ */
+export function nextBookableStarts(
+  search: Omit<SlotSearch, 'window'>,
+  days: readonly Interval[],
+  after: number,
+  limit: number,
+): BookableStart[] {
+  const found: BookableStart[] = [];
+  for (const window of days) {
+    if (found.length >= limit) break;
+    const starts = findBookableStarts({
+      ...search,
+      snapshot: {
+        ...search.snapshot,
+        opening: intersect(search.snapshot.opening, [window]),
+      },
+      window,
+    }).filter((slot) => slot.start > after);
+    found.push(...starts.slice(0, limit - found.length));
+  }
+  return found;
+}
