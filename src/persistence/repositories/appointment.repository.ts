@@ -1,11 +1,54 @@
 import { Injectable } from '@nestjs/common';
+import { Insertable, sql } from 'kysely';
 import { jsonBuildObject } from 'kysely/helpers/postgres';
 import { BaseRepository } from '../base.repository';
+import type { Appointment } from '../database.types';
 import { overlapsRange, TimeWindow } from '../ranges';
+
+/** A new booking; status, timestamps and id come from the column defaults. */
+export type NewAppointment = Omit<
+  Insertable<Appointment>,
+  'id' | 'status' | 'createdAt' | 'updatedAt' | 'cancelledAt'
+>;
 
 @Injectable()
 export class AppointmentRepository extends BaseRepository<'appointment'> {
   protected readonly table = 'appointment';
+
+  findByIdempotencyKey(key: string) {
+    return this.db
+      .selectFrom('appointment')
+      .select(['id', 'requestFingerprint'])
+      .where('idempotencyKey', '=', key)
+      .executeTakeFirst();
+  }
+
+  /**
+   * The only appointment insert. Undefined when the key was already used: the caller replays.
+   * The conflict target must stay named. Without it PostgreSQL also treats the exclusion
+   * constraints as arbiters and silently skips a double booking instead of raising 23P01
+   * (test/integration/invariants/on-conflict.int-spec.ts, AGENTS.md rule 1).
+   */
+  insertIfKeyIsNew(values: NewAppointment) {
+    return this.db
+      .insertInto('appointment')
+      .values(values)
+      .onConflict((oc) => oc.column('idempotencyKey').doNothing())
+      .returningAll()
+      .executeTakeFirst();
+  }
+
+  /** Repeats appointment_no_vehicle_overlap's range and status predicates, so its GiST index serves the check. */
+  async hasVehicleOverlap(vehicleId: string, window: TimeWindow) {
+    const row = await this.db
+      .selectFrom('appointment')
+      .select(sql<number>`1`.as('found'))
+      .where('vehicleId', '=', vehicleId)
+      .where(overlapsRange(window))
+      .where('status', '<>', 'CANCELLED')
+      .executeTakeFirst();
+    return row !== undefined;
+  }
 
   /** The appointment with the vehicle, service type, technician and bay it references; cancelled ones included. */
   findDetailedById(id: string) {
