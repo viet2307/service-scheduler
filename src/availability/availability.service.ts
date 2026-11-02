@@ -5,10 +5,10 @@ import {
 } from '@/common/config/booking-policy';
 import { ServiceInjectable } from '@/common/decorators';
 import {
+  bookableStartRange,
   findBookableStarts,
   Interval,
   localDayWindow,
-  MINUTE,
   openingIntervals,
   Snapshot,
 } from '@/domain';
@@ -20,8 +20,6 @@ import {
   TechnicianRepository,
 } from '@/persistence/repositories';
 import { SchedulerMetrics } from '@/telemetry/scheduler-metrics';
-
-const DAY = 24 * 60 * MINUTE;
 
 const toInterval = (row: { startAt: Date; endAt: Date }): Interval => ({
   start: row.startAt.getTime(),
@@ -95,9 +93,10 @@ export class AvailabilityService {
       this.serviceTypes.getById(serviceTypeId),
     ]);
     const window = localDayWindow(date, dealership.timezone);
-    const now = this.clock.now().getTime();
-    const earliestStart = now + this.policy.minLeadMinutes * MINUTE;
-    const latestStart = now + this.policy.horizonDays * DAY;
+    const { earliestStart, latestStart } = bookableStartRange(
+      this.clock.now().getTime(),
+      this.policy,
+    );
 
     const slots =
       window.end > earliestStart && window.start <= latestStart

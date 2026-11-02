@@ -1,8 +1,12 @@
 import { DateTime } from 'luxon';
 import {
+  formatLocal,
   gridPoints,
   Interval,
+  isOnGrid,
+  localDateOf,
   localDayWindow,
+  MINUTE,
   OpeningHours,
   openingIntervals,
 } from '@/domain';
@@ -166,5 +170,61 @@ describe('calendar', () => {
         ),
       ).toEqual([span(['2026-11-02T05:00:00Z', '2026-11-02T10:30:00Z'])]);
     });
+  });
+
+  describe('isOnGrid', () => {
+    it('accepts exactly the points gridPoints walks, on a DST change day', () => {
+      const zone = 'Europe/London';
+      for (const t of gridPoints(
+        localDayWindow('2026-10-25', zone),
+        zone,
+        15,
+      )) {
+        expect(isOnGrid(t, zone, 15)).toBe(true);
+        expect(isOnGrid(t + 5 * MINUTE, zone, 15)).toBe(false);
+      }
+    });
+
+    it.each([
+      ['2026-11-02T03:15:00Z', 30, true], // 09:00 local
+      ['2026-11-02T03:00:00Z', 30, false], // 08:45 local
+      ['2026-11-02T03:00:00Z', 15, true],
+      ['2026-11-02T03:15:30Z', 15, false],
+    ])(
+      'counts from local midnight at +05:45: %s on a %i-minute grid is %s',
+      (iso, grid, expected) => {
+        expect(isOnGrid(utc(iso), 'Asia/Kathmandu', grid)).toBe(expected);
+      },
+    );
+
+    it('rejects an unknown zone', () => {
+      expect(() =>
+        isOnGrid(utc('2026-11-02T03:00:00Z'), 'Nowhere', 15),
+      ).toThrow(RangeError);
+    });
+  });
+
+  describe('localDateOf', () => {
+    it.each([
+      ['2026-11-01T16:59:59Z', '2026-11-01'],
+      ['2026-11-01T17:00:00Z', '2026-11-02'],
+    ])('places %s on %s in Asia/Ho_Chi_Minh', (iso, date) => {
+      expect(localDateOf(utc(iso), 'Asia/Ho_Chi_Minh')).toBe(date);
+    });
+
+    it('rejects an unknown zone', () => {
+      expect(() => localDateOf(utc('2026-11-02T03:00:00Z'), 'Nowhere')).toThrow(
+        RangeError,
+      );
+    });
+  });
+
+  it('formatLocal shows the local wall-clock time', () => {
+    expect(formatLocal(utc('2026-11-02T02:00:00Z'), 'Asia/Ho_Chi_Minh')).toBe(
+      '09:00',
+    );
+    expect(formatLocal(utc('2026-10-25T09:30:00Z'), 'Europe/London')).toBe(
+      '09:30',
+    );
   });
 });

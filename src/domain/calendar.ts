@@ -70,3 +70,27 @@ export function gridPoints(
   }
   return points;
 }
+
+const localMidnight = (instant: number, zone: string): DateTime => {
+  const midnight = DateTime.fromMillis(instant, { zone }).startOf('day');
+  if (!midnight.isValid) throw new RangeError(`Invalid time zone ${zone}`);
+  return midnight;
+};
+
+/** Whether `instant` is one of the points `gridPoints` walks, so a start the search offers is never off-grid. */
+export const isOnGrid = (
+  instant: number,
+  zone: string,
+  gridMinutes: number,
+): boolean =>
+  (instant - localMidnight(instant, zone).toMillis()) %
+    (gridMinutes * MINUTE) ===
+  0;
+
+/** The local calendar day of `instant`, `YYYY-MM-DD`. */
+export const localDateOf = (instant: number, zone: string): string =>
+  localMidnight(instant, zone).toISODate()!;
+
+/** The local wall-clock time of `instant`, `HH:mm`, for messages. */
+export const formatLocal = (instant: number, zone: string): string =>
+  DateTime.fromMillis(instant, { zone }).toFormat('HH:mm');
