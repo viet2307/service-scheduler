@@ -211,6 +211,92 @@ paths:
                 $ref: "#/components/schemas/ProblemDetailsDto"
       tags:
         - dealerships
+  /v1/appointments:
+    post:
+      description: Assigns the technician and bay itself. Retrying with the same
+        Idempotency-Key and request replays the booking instead of creating
+        another.
+      operationId: Appointments_create
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          description: Client-generated key (e.g. a UUID). Retrying with the same key and
+            body replays the original result.
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAppointmentDto"
+      responses:
+        "200":
+          description: "Replay: the Idempotency-Key was already used with the same
+            request. Returns the appointment's current representation, which may
+            have changed since (e.g. cancelled)."
+          headers:
+            Idempotent-Replayed:
+              schema:
+                type: string
+                enum:
+                  - "true"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppointmentDto"
+        "201":
+          description: Booked
+          headers:
+            Location:
+              description: The new appointment
+              schema:
+                type: string
+                example: /v1/appointments/{id}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppointmentDto"
+        "400":
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "404":
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "409":
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "500":
+          description: Internal Server Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+        "503":
+          description: Service Unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetailsDto"
+      summary: Book a qualified technician and a compatible bay
+      tags:
+        - appointments
   /v1/appointments/{id}:
     get:
       operationId: Appointments_get
@@ -306,6 +392,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/FieldErrorDto"
+        rule:
+          type: string
+          example: OUTSIDE_OPENING_HOURS
+          description: "BUSINESS_RULE_VIOLATED only: OFF_GRID, TOO_SOON, BEYOND_HORIZON,
+            OUTSIDE_OPENING_HOURS or VEHICLE_NOT_OWNED"
       required:
         - type
         - title
@@ -440,6 +531,34 @@ components:
         - date
         - timeZone
         - slots
+    CreateAppointmentDto:
+      type: object
+      properties:
+        dealershipId:
+          type: string
+          format: uuid
+        customerId:
+          type: string
+          format: uuid
+        vehicleId:
+          type: string
+          format: uuid
+          description: Owned by the customer
+        serviceTypeId:
+          type: string
+          format: uuid
+        startAt:
+          type: string
+          format: date-time
+          example: 2026-11-02T09:00:00+07:00
+          description: With an explicit offset (`Z` or `±hh:mm`). On the slot grid of the
+            dealership's local day, inside its opening hours.
+      required:
+        - dealershipId
+        - customerId
+        - vehicleId
+        - serviceTypeId
+        - startAt
     AppointmentStatus:
       type: string
       enum:
