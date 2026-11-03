@@ -9,6 +9,7 @@ Rules for anyone changing this repository, including AI coding agents.
 3. No network calls inside the booking transaction. Transactions stay short and set `lock_timeout`.
 4. `src/domain` imports nothing from NestJS, Kysely, `pg` or other `src` folders. ESLint enforces this.
 5. Invariant tests (overlap, back-to-back, cancellation, `ON CONFLICT` and concurrency tests) may not be weakened to make code pass.
+6. Appointments are written only through `AppointmentRepository.insertIfKeyIsNew` and compare-and-set updates such as `cancel` (`UPDATE … WHERE status = <expected status>`). The generic `insert` and `updateById` refuse on that table; do not work around them.
 
 ## Conventions
 
