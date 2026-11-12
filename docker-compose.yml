@@ -73,7 +73,7 @@ services:
       - prometheus
 
   jaeger:
-    image: jaegertracing/jaeger:2.22.0
+    image: jaegertracing/jaeger:2.23.0
     ports:
       - '16686:16686'
 
